@@ -9,14 +9,27 @@ async function harness(): Promise<Context> {
 }
 
 describe('execution-world cwd', () => {
-  it('accepts a Windows absolute cwd even when the Harness host is POSIX', async () => {
+  it.each([
+    ['/home/user/project', 'POSIX absolute'],
+    [String.raw`D:\Projects\PersonalAgent`, 'Windows drive absolute'],
+    [String.raw`D:/Projects/PersonalAgent`, 'Windows drive absolute with slash separators'],
+    [String.raw`\\server\share\project`, 'Windows UNC absolute'],
+  ])('accepts %s as an execution-world absolute cwd (%s)', (cwd) => {
+    const ctx = new Context()
+    return ctx.plugin(SessionStore).then(() => {
+      const id = SessionId(`absolute-${Math.random()}`)
+      expect(() => ctx.sessions.create(id, { meta: { cwd } })).not.toThrow()
+      expect(ctx.sessions.get(id)?.header.cwd).toBe(cwd)
+    })
+  })
+
+  it.each([
+    ['relative/project', 'ordinary relative path'],
+    [String.raw`D:relative\project`, 'Windows drive-relative path'],
+  ])('rejects %s (%s)', async (cwd) => {
     const ctx = await harness()
-    const cwd = String.raw`D:\Projects\PersonalAgent`
-
-    expect(() => ctx.sessions.create(SessionId('windows-execution-world'), {
+    expect(() => ctx.sessions.create(SessionId(`relative-${Math.random()}`), {
       meta: { cwd },
-    })).not.toThrow()
-
-    expect(ctx.sessions.get(SessionId('windows-execution-world'))?.header.cwd).toBe(cwd)
+    })).toThrow(`session header cwd must be an absolute path, got "${cwd}"`)
   })
 })
