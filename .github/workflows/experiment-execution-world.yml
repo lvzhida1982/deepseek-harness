@@ -1,9 +1,9 @@
-name: Execution World Placement Experiment
+name: Execution World Preset Platform Experiment
 
 on:
   push:
     branches:
-      - experiment/execution-world-placement
+      - experiment/execution-world-preset-platform
   pull_request:
     branches:
       - master
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 jobs:
-  placement:
+  placement-platform:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -25,6 +25,8 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: 运行 placement 平台选择测试
+        run: pnpm exec vitest run packages/preset/agent-presets/tests/placement-platform.spec.ts
       - name: 运行 agent-presets 完整测试
         run: pnpm exec vitest run packages/preset/agent-presets/tests
       - name: 运行 Host 类型与构建检查
