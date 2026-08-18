@@ -27,9 +27,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: 生成 Bash 执行世界 workdir 实验实现
         run: node packages/shell/tool-bash/tests/apply-execution-world-workdir.mjs
-      - name: 运行 tool-bash 完整测试
-        run: pnpm exec vitest run packages/shell/tool-bash/tests
-      - name: 运行 PowerShell 跨执行世界 workdir 红测试
-        run: pnpm exec vitest run packages/shell/tool-pwsh/tests/execution-world-workdir.spec.ts
+      - name: 生成 PowerShell 执行世界 workdir 实验实现
+        run: node packages/shell/tool-pwsh/tests/apply-execution-world-workdir.mjs
+      - name: 运行 Bash 与 PowerShell 完整测试
+        run: pnpm exec vitest run packages/shell/tool-bash/tests packages/shell/tool-pwsh/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
