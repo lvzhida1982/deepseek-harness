@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   sandbox-policy-paths:
@@ -35,3 +35,12 @@ jobs:
         run: pnpm exec vitest run packages/fs/fs-sandbox/tests packages/shell/bash-sandbox/tests packages/shell/pwsh-sandbox/tests packages/shell/tool-bash/tests packages/shell/tool-pwsh/tests packages/terminal/terminal-bash/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
+      - name: 提交验证后的 Sandbox Policy 路径实现并清理脚手架
+        if: github.event_name == 'push'
+        run: |
+          node packages/sandbox/sandbox-policy/tests/finalize-execution-world-path-semantics.mjs
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 Sandbox Policy 执行世界路径实现'
+          git push
