@@ -45,6 +45,14 @@ export interface AgentPresetSettings {
   default?: string
 }
 
+/** Runtime location under which one standing preset generation is composed. */
+export interface PresetPlacement {
+  /** Cordis context that owns the preset's service ancestry. */
+  readonly ctx: Context
+  /** dsh-scope parent that owns the preset's registry/event ancestry. */
+  readonly parent: ScopeKey
+}
+
 /** Runtime schema for the user-writable slice. */
 export const AgentPresetSettingsSchema: z<AgentPresetSettings> = z.object({
   default: z.string(),
@@ -251,6 +259,18 @@ export class AgentPresets extends Service {
    */
   private readonly standing = new Map<string, Promise<StandingMount>>()
 
+  /** Standing-generation buckets owned by non-host placements. */
+  private readonly placedStanding = new WeakMap<ScopeKey, PlacementStanding>()
+
+  /** Iterable live placement buckets, used only for roster invalidation. */
+  private readonly placedBuckets = new Set<Map<string, Promise<StandingMount>>>()
+
+  /** Placement that owns each standing scope key; null means the host plane. */
+  private readonly standingPlacements = new WeakMap<ScopeKey, PresetPlacement | null>()
+
+  /** Placement retained by each composed agent so recompose cannot move worlds. */
+  private readonly agentPlacements = new WeakMap<ScopeKey, PresetPlacement | null>()
+
   /**
    * Parent bindings of the agents this roster composed, keyed by the agent's
    * scope key. The binding is dsh-scope's only re-link capability; holding it
@@ -272,18 +292,19 @@ export class AgentPresets extends Service {
    * @returns the preset that was composed, for the caller to record.
    * @throws when the preset is unknown or its composition is unusable.
    */
-  async mount(agentCtx: Context, id?: string): Promise<AgentPreset> {
+  async mount(agentCtx: Context, id?: string, placement?: PresetPlacement): Promise<AgentPreset> {
     const agentKey = scopeOf(agentCtx)
     if (agentKey === undefined) {
       throw new Error('agent-presets: refusing to compose an unscoped context; the scope key is what joins an agent to its preset')
     }
     const preset = await this.resolveMountable(id)
-    const standing = await this.ensureStanding(preset)
+    const standing = await this.ensureStanding(preset, placement)
     // The one bind of this agent's ancestry. The binding is the only re-link
     // authority, held privately so nothing outside this roster can move a
     // composed agent to another preset; a later recompose layer re-links
     // through it under the caller-owned blank-session contract.
     this.bindings.set(agentKey, bindScopeParent(agentKey, standing.key))
+    this.agentPlacements.set(agentKey, placement ?? null)
     return preset
   }
 
@@ -321,6 +342,7 @@ export class AgentPresets extends Service {
     const standing = standingMountFor(parentCtx)
     if (standing === undefined) return undefined
     this.bindings.set(agentKey, bindScopeParent(agentKey, standing.key))
+    this.agentPlacements.set(agentKey, this.standingPlacements.get(standing.key) ?? null)
     return standing.presetId
   }
 
@@ -389,7 +411,7 @@ export class AgentPresets extends Service {
     // A settled mount under this id can only be stale (its preset was deleted
     // from disk outside `remove`); the new preset must not inherit it. Every
     // session already joined keeps the generation it runs on regardless.
-    this.standing.delete(id)
+    this.invalidateStanding(id)
   }
 
   /**
@@ -401,7 +423,7 @@ export class AgentPresets extends Service {
     await deleteComposition(this.resolvedRoots, await this.resolve(id))
     // Sessions on the deleted preset keep their standing mount; only new
     // sessions see the roster without it.
-    this.standing.delete(id)
+    this.invalidateStanding(id)
     // Storing a default that does not exist YET is deliberate — the roster is a
     // live directory, so a name absent now may exist by the time a session asks
     // for it, and `resolve` reports it then. A default this call just deleted is
@@ -455,19 +477,25 @@ export class AgentPresets extends Service {
    * @returns the preset now installed.
    * @throws when the preset is unknown or its composition is unusable.
    */
-  async recompose(agentCtx: Context, id: string): Promise<AgentPreset> {
+  async recompose(agentCtx: Context, id: string, placement?: PresetPlacement): Promise<AgentPreset> {
     const agentKey = scopeOf(agentCtx)
     if (agentKey === undefined) {
       throw new Error('agent-presets: refusing to recompose an unscoped context')
     }
-    const preset = await this.resolveMountable(id)
-    const standing = await this.ensureStanding(preset)
     const binding = this.bindings.get(agentKey)
+    const currentPlacement = this.agentPlacements.get(agentKey)
+    const targetPlacement = binding === undefined ? placement : currentPlacement ?? undefined
+    if (binding !== undefined && placement !== undefined && !samePlacement(targetPlacement, placement)) {
+      throw new Error('agent-presets: refusing to move a composed agent to a different preset placement')
+    }
+    const preset = await this.resolveMountable(id)
+    const standing = await this.ensureStanding(preset, targetPlacement)
     if (binding === undefined) {
       this.bindings.set(agentKey, bindScopeParent(agentKey, standing.key))
     } else {
       binding.rebind(standing.key)
     }
+    this.agentPlacements.set(agentKey, targetPlacement ?? null)
     return preset
   }
 
@@ -482,14 +510,15 @@ export class AgentPresets extends Service {
    * @returns the standing scope key readers pass as a registry view scope.
    * @throws when the preset is unknown or its composition is unusable.
    */
-  async standingKeyFor(id?: string): Promise<ScopeKey> {
+  async standingKeyFor(id?: string, placement?: PresetPlacement): Promise<ScopeKey> {
     const preset = await this.resolveMountable(id)
-    return (await this.ensureStanding(preset)).key
+    return (await this.ensureStanding(preset, placement)).key
   }
 
   /** Resolve (or create, single-flight) the standing mount of one preset. */
-  private async ensureStanding(preset: AgentPreset): Promise<StandingMount> {
-    const pending = this.standing.get(preset.id)
+  private async ensureStanding(preset: AgentPreset, placement?: PresetPlacement): Promise<StandingMount> {
+    const bucket = this.standingBucket(placement)
+    const pending = bucket.get(preset.id)
     if (pending !== undefined) {
       const mounted = await pending
       // Files are the only composition editor (authoring is copy/delete), so
@@ -507,12 +536,14 @@ export class AgentPresets extends Service {
       // decremented when the agent's scope key dies.
       // Guarded delete: a caller that raced this one may have already started
       // the next generation, and dropping THAT pointer would fork a third.
-      if (this.standing.get(preset.id) === pending) this.standing.delete(preset.id)
-      return this.ensureStanding(preset)
+      if (bucket.get(preset.id) === pending) bucket.delete(preset.id)
+      return this.ensureStanding(preset, placement)
     }
     const created = (async (): Promise<StandingMount> => {
       const key: ScopeKey = { agentPreset: preset.id }
-      const scope = createScope(this.selfCtx, key)
+      const scope = placement === undefined
+        ? createScope(this.selfCtx, key)
+        : createScope(placement.ctx, key, { parent: placement.parent })
       try {
         // Stamped before the file is read: an edit racing the mount makes the
         // stamp stale rather than silently current, so the next session
@@ -522,15 +553,42 @@ export class AgentPresets extends Service {
           throw new PresetMountError(preset.id, `composition file is unreadable: ${preset.path}`)
         }
         await mountPreset(scope.ctx, preset)
+        this.standingPlacements.set(key, placement ?? null)
         return { key, scope, stamp }
       } catch (error) {
-        this.standing.delete(preset.id)
+        bucket.delete(preset.id)
         await scope.dispose()
         throw error
       }
     })()
-    this.standing.set(preset.id, created)
+    bucket.set(preset.id, created)
     return created
+  }
+
+  /** Resolve the standing-generation bucket for one placement. */
+  private standingBucket(placement?: PresetPlacement): Map<string, Promise<StandingMount>> {
+    if (placement === undefined) return this.standing
+    const cached = this.placedStanding.get(placement.parent)
+    if (cached !== undefined) {
+      if (cached.ctx !== placement.ctx) {
+        throw new Error('agent-presets: one preset placement parent cannot name multiple Cordis contexts')
+      }
+      return cached.mounts
+    }
+    const mounts = new Map<string, Promise<StandingMount>>()
+    this.placedStanding.set(placement.parent, { ctx: placement.ctx, mounts })
+    this.placedBuckets.add(mounts)
+    placement.ctx.effect(() => () => {
+      this.placedBuckets.delete(mounts)
+      mounts.clear()
+    }, 'agentPresets.placementStanding()')
+    return mounts
+  }
+
+  /** Drop only future lookup pointers; joined agents keep their live generation. */
+  private invalidateStanding(id: string): void {
+    this.standing.delete(id)
+    for (const bucket of this.placedBuckets) bucket.delete(id)
   }
 }
 
@@ -567,6 +625,18 @@ interface StandingMount {
   readonly scope: Scope
   /** Stamp of the composition file this generation was mounted from. */
   readonly stamp: CompositionStamp
+}
+
+/** One non-host placement's standing-generation cache. */
+interface PlacementStanding {
+  readonly ctx: Context
+  readonly mounts: Map<string, Promise<StandingMount>>
+}
+
+/** Whether two optional placements identify the same live runtime location. */
+function samePlacement(a: PresetPlacement | undefined, b: PresetPlacement | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b
+  return a.ctx === b.ctx && a.parent === b.parent
 }
 
 export default AgentPresets

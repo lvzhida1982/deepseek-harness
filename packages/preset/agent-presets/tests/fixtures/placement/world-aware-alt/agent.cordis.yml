@@ -1,0 +1,4 @@
+- id: world-aware-alt
+  name: ../../plugins/world-aware.js
+  config:
+    prefix: alt
