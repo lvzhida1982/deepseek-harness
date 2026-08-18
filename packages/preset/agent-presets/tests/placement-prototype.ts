@@ -1,6 +1,7 @@
 import { type Context } from '@deepseek-ai/cordis'
 import { bindScopeParent, createScope, scopeOf, type Scope, type ScopeKey, type ScopeParentBinding } from '@deepseek-ai/dsh-scope'
-import { mountPreset, standingMountFor, type default as AgentPresets, type AgentPreset } from '@deepseek-ai/dsh-agent-presets'
+import { mountPreset, standingMountFor, type AgentPreset } from '@deepseek-ai/dsh-agent-presets'
+import type AgentPresets from '@deepseek-ai/dsh-agent-presets'
 
 export interface PresetPlacement {
   readonly ctx: Context
