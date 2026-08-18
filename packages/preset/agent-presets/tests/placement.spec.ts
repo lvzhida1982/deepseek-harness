@@ -10,7 +10,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
-import { createScope, type Scope, type ScopeKey } from '@deepseek-ai/dsh-scope'
+import { createScope, scopeOf, type Scope, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { describe, expect, it } from 'vitest'
 import { PlacementPrototype, type PresetPlacement } from './placement-prototype.ts'
 
@@ -58,7 +58,12 @@ function agentIn(world: ExecutionWorld, id: string): Agent {
 }
 
 function toolNames(ctx: Context, agent: Agent): string[] {
-  return ctx.tools.schemas(agent).map(schema => schema.name).sort()
+  const key = scopeOf(agent.ctx)
+  if (key === undefined) throw new Error('fixture agent has no scope')
+  // A real ReactLoopAgent is itself its ScopeKey (`createScope(loopCtx, this)`).
+  // This lightweight fixture is not, so address the registry by the actual key
+  // carried on its context rather than by the fake Agent object.
+  return ctx.tools.schemas(key).map(schema => schema.name).sort()
 }
 
 describe('agent preset placement prototype', () => {
