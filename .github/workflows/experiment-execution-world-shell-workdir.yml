@@ -1,0 +1,29 @@
+name: Execution World Shell Workdir Experiment
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-shell-workdir
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-workdir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行 Shell 跨执行世界 workdir 红测试
+        run: pnpm exec vitest run packages/shell/tool-bash/tests/execution-world-workdir.spec.ts
