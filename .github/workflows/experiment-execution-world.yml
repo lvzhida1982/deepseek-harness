@@ -27,5 +27,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: 生成通用挂载位置实验实现
         run: node packages/preset/agent-presets/tests/apply-generalized-placement.mjs
-      - name: 运行挂载位置与原有 Preset 测试
-        run: pnpm exec vitest run packages/preset/agent-presets/tests/placement.spec.ts packages/preset/agent-presets/tests/mount.spec.ts
+      - name: 运行 agent-presets 完整测试
+        run: pnpm exec vitest run packages/preset/agent-presets/tests
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
+      - name: 保存验证后的 AgentPresets 源码
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-presets-placement-validated
+          path: packages/preset/agent-presets/src/index.ts
+          if-no-files-found: error
