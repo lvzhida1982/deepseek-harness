@@ -3,10 +3,11 @@
 export const name = 'world-aware'
 export const inject = ['tools', 'worldMarker']
 
-export function apply(ctx) {
+export function apply(ctx, config = {}) {
   const label = ctx.worldMarker.label
+  const prefix = config.prefix ?? 'world'
   ctx.effect(() => ctx.tools.register({
-    name: `world-${label}`,
+    name: `${prefix}-${label}`,
     description: `fixture tool for execution world ${label}`,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     output: {
