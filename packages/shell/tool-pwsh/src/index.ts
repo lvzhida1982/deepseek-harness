@@ -25,7 +25,6 @@ import z from '@deepseek-ai/schemastery'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, TerminalCallView, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-shell-env'
@@ -148,8 +147,26 @@ function pwshDescription(backgroundEnabled: boolean, escalationModes: readonly S
  * Resolve an explicit workdir first, making a relative one session-workspace-relative;
  * otherwise use the session header cwd and leave executor defaulting as the fallback.
  */
-function resolveWorkdir(modelWorkdir: string | undefined, exec: { agent?: Agent }): string | undefined {
+async function resolveWorkdir(
+  ctx: Context,
+  modelWorkdir: string | undefined,
+  exec: Pick<ToolExecution, 'agent' | 'signal'>,
+): Promise<string | undefined> {
   const headerCwd = exec.agent?.session.header.cwd
+  const fs = ctx.get('fs')
+  if (fs !== undefined) {
+    const requested = modelWorkdir ?? headerCwd
+    if (requested === undefined) return undefined
+    const target = await fs.resolve(requested, {
+      ...modelWorkdir !== undefined && headerCwd !== undefined ? { cwd: headerCwd } : {},
+      signal: exec.signal,
+    })
+    return fs.processPath(target)
+  }
+
+  // Preserve the historical Shell-only composition when no filesystem seam is
+  // mounted. In that deployment the Shell necessarily shares the Harness host
+  // path grammar, so node:path remains the correct fallback.
   if (modelWorkdir === undefined) return headerCwd
   if (headerCwd !== undefined && !isAbsolute(modelWorkdir)) {
     return resolvePath(headerCwd, modelWorkdir)
@@ -355,7 +372,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const policy = approvedMode === undefined
         ? standingPolicy
         : { ...(standingPolicy as SandboxExecutionPolicy), mode: approvedMode }
-      const workdir = resolveWorkdir(args.workdir, exec)
+      const workdir = await resolveWorkdir(ctx, args.workdir, exec)
       const request = {
         command: args.command,
         ...workdir !== undefined ? { workdir } : {},
