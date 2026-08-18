@@ -1,0 +1,29 @@
+name: Execution World Sandbox Policy Paths Experiment
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-sandbox-policy-paths
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox-policy-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行 Sandbox Policy 跨执行世界路径红测试
+        run: pnpm exec vitest run packages/sandbox/sandbox-policy/tests/execution-world-path.spec.ts
