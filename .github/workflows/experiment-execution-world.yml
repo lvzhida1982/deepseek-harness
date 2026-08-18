@@ -10,13 +10,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   placement:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -37,3 +39,15 @@ jobs:
           name: agent-presets-placement-validated
           path: packages/preset/agent-presets/src/index.ts
           if-no-files-found: error
+      - name: 提交验证后的 AgentPresets 源码
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet -- packages/preset/agent-presets/src/index.ts; then
+            echo '源码没有变化，无需提交'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/preset/agent-presets/src/index.ts
+          git commit -m '验证：提交通过完整测试的 AgentPresets 挂载位置实现'
+          git push origin HEAD:${{ github.head_ref }}
