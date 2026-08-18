@@ -15,8 +15,7 @@ import { describe, expect, it } from 'vitest'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const ROOTS = [
-  { path: join(FIXTURES, 'system'), trust: 'system' as const },
-  { path: join(FIXTURES, 'user'), trust: 'user' as const },
+  { path: join(FIXTURES, 'placement'), trust: 'user' as const },
 ]
 
 async function harness(): Promise<Context> {
@@ -30,7 +29,7 @@ async function harness(): Promise<Context> {
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(AgentPresets, { default: 'standard', roots: ROOTS, includeUserRoot: false })
+  await ctx.plugin(AgentPresets, { default: 'world-aware', roots: ROOTS, includeUserRoot: false })
   return ctx
 }
 
