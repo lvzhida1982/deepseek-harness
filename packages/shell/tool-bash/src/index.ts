@@ -14,7 +14,6 @@ import { isAbsolute, resolve as resolvePath } from 'node:path'
 import { defineTool, TOOL_ABORTED } from '@deepseek-ai/dsh-tools'
 import type { GenericCallView, TerminalCallView, ToolExecution, ToolResult, ToolResultView } from '@deepseek-ai/dsh-tools'
 import { HarnessError } from '@deepseek-ai/dsh-llm'
-import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-jobs'
 import type {} from '@deepseek-ai/dsh-user-approval'
@@ -141,12 +140,28 @@ function presentBashResult(args: unknown, result: ToolResult): ToolResultView | 
  * defaulting as the fallback. A resolved sandbox-policy root wins so workdir
  * and confinement use the exact same per-call identity.
  */
-function resolveWorkdir(
+async function resolveWorkdir(
+  ctx: Context,
   modelWorkdir: string | undefined,
-  exec: { agent?: Agent },
+  exec: Pick<ToolExecution, 'agent' | 'signal'>,
   policyWorkspaceRoot?: string,
-): string | undefined {
+): Promise<string | undefined> {
   const headerCwd = exec.agent?.session.header.cwd
+  const executionWorldCwd = policyWorkspaceRoot ?? headerCwd
+  const fs = ctx.get('fs')
+  if (fs !== undefined) {
+    const requested = modelWorkdir ?? executionWorldCwd
+    if (requested === undefined) return undefined
+    const target = await fs.resolve(requested, {
+      ...modelWorkdir !== undefined && executionWorldCwd !== undefined ? { cwd: executionWorldCwd } : {},
+      signal: exec.signal,
+    })
+    return fs.processPath(target)
+  }
+
+  // Preserve the historical Shell-only composition when no filesystem seam is
+  // mounted. In that deployment the Shell necessarily shares the Harness host
+  // path grammar, so node:path remains the correct fallback.
   const sessionCwd = policyWorkspaceRoot ?? (headerCwd === undefined ? undefined : canonicalPath(headerCwd))
   if (modelWorkdir === undefined) return sessionCwd
   if (sessionCwd !== undefined && !isAbsolute(modelWorkdir)) {
@@ -337,7 +352,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       const policy = approvedMode === undefined
         ? standingPolicy
         : { ...(standingPolicy as SandboxExecutionPolicy), mode: approvedMode }
-      const workdir = resolveWorkdir(args.workdir, exec, standingPolicy?.workspaceRoot)
+      const workdir = await resolveWorkdir(ctx, args.workdir, exec, standingPolicy?.workspaceRoot)
       const dshEnv = ctx.shellEnv.collect(exec)
       const request = {
         command: args.command,
