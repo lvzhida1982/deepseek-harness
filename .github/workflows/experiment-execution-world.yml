@@ -6,7 +6,7 @@ on:
       - experiment/execution-world-preset-platform
   pull_request:
     branches:
-      - master
+      - experiment/execution-world-placement
   workflow_dispatch:
 
 permissions:
