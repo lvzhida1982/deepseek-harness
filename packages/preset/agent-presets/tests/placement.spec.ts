@@ -9,10 +9,9 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import AgentPresets, { type PresetPlacement } from '@deepseek-ai/dsh-agent-presets'
 import { createScope, scopeOf, type Scope, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { describe, expect, it } from 'vitest'
-import { PlacementPrototype, type PresetPlacement } from './placement-prototype.ts'
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures')
 const ROOTS = [
@@ -50,9 +49,9 @@ function executionWorld(ctx: Context, label: string): ExecutionWorld {
 }
 
 function agentIn(world: ExecutionWorld, id: string): Agent {
-  // Cordis ancestry starts in the execution world, but the dsh-scope parent is
-  // intentionally left empty. PlacementPrototype owns the one authoritative
-  // bind: Agent -> Preset -> ExecutionWorld.
+  // Cordis ancestry starts in the execution world, but dsh-scope ancestry is
+  // intentionally left empty. AgentPresets owns the authoritative bind:
+  // Agent -> Preset -> ExecutionWorld.
   const scope = createScope(world.scope.ctx, { agent: id })
   return { ctx: scope.ctx } as Agent
 }
@@ -66,17 +65,16 @@ function toolNames(ctx: Context, agent: Agent): string[] {
   return ctx.tools.schemas(key).map(schema => schema.name).sort()
 }
 
-describe('agent preset placement prototype', () => {
+describe('agent preset generalized placement', () => {
   it('mounts the same preset independently below two execution worlds', async () => {
     const ctx = await harness()
-    const placements = new PlacementPrototype(ctx.agentPresets)
     const worldA = executionWorld(ctx, 'A')
     const worldB = executionWorld(ctx, 'B')
     const agentA = agentIn(worldA, 'agent-a')
     const agentB = agentIn(worldB, 'agent-b')
 
-    await placements.mount(agentA.ctx, 'world-aware', worldA.placement)
-    await placements.mount(agentB.ctx, 'world-aware', worldB.placement)
+    await ctx.agentPresets.mount(agentA.ctx, 'world-aware', worldA.placement)
+    await ctx.agentPresets.mount(agentB.ctx, 'world-aware', worldB.placement)
 
     expect(toolNames(ctx, agentA)).toEqual(['world-A'])
     expect(toolNames(ctx, agentB)).toEqual(['world-B'])
@@ -84,13 +82,12 @@ describe('agent preset placement prototype', () => {
 
   it('shares a standing generation inside one world and separates worlds', async () => {
     const ctx = await harness()
-    const placements = new PlacementPrototype(ctx.agentPresets)
     const worldA = executionWorld(ctx, 'A')
     const worldB = executionWorld(ctx, 'B')
 
-    const a1 = await placements.standingKeyFor('world-aware', worldA.placement)
-    const a2 = await placements.standingKeyFor('world-aware', worldA.placement)
-    const b = await placements.standingKeyFor('world-aware', worldB.placement)
+    const a1 = await ctx.agentPresets.standingKeyFor('world-aware', worldA.placement)
+    const a2 = await ctx.agentPresets.standingKeyFor('world-aware', worldA.placement)
+    const b = await ctx.agentPresets.standingKeyFor('world-aware', worldB.placement)
 
     expect(a2).toBe(a1)
     expect(b).not.toBe(a1)
@@ -98,13 +95,12 @@ describe('agent preset placement prototype', () => {
 
   it('lets a child inherit the exact parent world and standing generation', async () => {
     const ctx = await harness()
-    const placements = new PlacementPrototype(ctx.agentPresets)
     const worldA = executionWorld(ctx, 'A')
     const parent = agentIn(worldA, 'parent')
     const child = agentIn(worldA, 'child')
 
-    await placements.mount(parent.ctx, 'world-aware', worldA.placement)
-    expect(placements.composeFrom(child.ctx, parent.ctx)).toBe('world-aware')
+    await ctx.agentPresets.mount(parent.ctx, 'world-aware', worldA.placement)
+    expect(ctx.agentPresets.composeFrom(child.ctx, parent.ctx)).toBe('world-aware')
 
     expect(toolNames(ctx, parent)).toEqual(['world-A'])
     expect(toolNames(ctx, child)).toEqual(['world-A'])
@@ -112,14 +108,26 @@ describe('agent preset placement prototype', () => {
 
   it('recomposes the preset without changing the execution world', async () => {
     const ctx = await harness()
-    const placements = new PlacementPrototype(ctx.agentPresets)
     const worldA = executionWorld(ctx, 'A')
     const agent = agentIn(worldA, 'agent-a')
 
-    await placements.mount(agent.ctx, 'world-aware', worldA.placement)
+    await ctx.agentPresets.mount(agent.ctx, 'world-aware', worldA.placement)
     expect(toolNames(ctx, agent)).toEqual(['world-A'])
 
-    await placements.recompose(agent.ctx, 'world-aware-alt')
+    await ctx.agentPresets.recompose(agent.ctx, 'world-aware-alt')
     expect(toolNames(ctx, agent)).toEqual(['alt-A'])
+  })
+
+  it('refuses to move an already composed agent across placements during recompose', async () => {
+    const ctx = await harness()
+    const worldA = executionWorld(ctx, 'A')
+    const worldB = executionWorld(ctx, 'B')
+    const agent = agentIn(worldA, 'agent-a')
+
+    await ctx.agentPresets.mount(agent.ctx, 'world-aware', worldA.placement)
+
+    await expect(ctx.agentPresets.recompose(agent.ctx, 'world-aware-alt', worldB.placement))
+      .rejects.toThrow('different preset placement')
+    expect(toolNames(ctx, agent)).toEqual(['world-A'])
   })
 })
