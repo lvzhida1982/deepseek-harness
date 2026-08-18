@@ -25,5 +25,9 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 运行跨执行世界 cwd 红测试
-        run: pnpm exec vitest run packages/core/session/tests/execution-world-cwd.spec.ts
+      - name: 生成执行世界 cwd 实验实现
+        run: node packages/core/session/tests/apply-execution-world-cwd.mjs
+      - name: 运行 Session 与持久化测试
+        run: pnpm exec vitest run packages/core/session/tests packages/session/session-persistence-jsonl/tests packages/session/session-persistence-sqlite/tests
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
