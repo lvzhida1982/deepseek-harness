@@ -25,4 +25,7 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec vitest run packages/preset/agent-presets/tests/placement.spec.ts
+      - name: 应用通用挂载位置补丁
+        run: git apply --check packages/preset/agent-presets/tests/generalized-placement.patch && git apply packages/preset/agent-presets/tests/generalized-placement.patch
+      - name: 运行挂载位置与原有 Preset 测试
+        run: pnpm exec vitest run packages/preset/agent-presets/tests/placement.spec.ts packages/preset/agent-presets/tests/mount.spec.ts
