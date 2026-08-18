@@ -9,6 +9,12 @@ function replaceExact(before, after, label) {
 }
 
 replaceExact(
+"import type { Agent } from '@deepseek-ai/dsh-agent'\n",
+'',
+'移除不再使用的 Agent 类型导入',
+)
+
+replaceExact(
 `function resolveWorkdir(
   modelWorkdir: string | undefined,
   exec: { agent?: Agent },
