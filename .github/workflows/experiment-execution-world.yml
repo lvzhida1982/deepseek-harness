@@ -1,0 +1,25 @@
+name: Execution World Placement Experiment
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-placement
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  placement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vitest run packages/preset/agent-presets/tests/placement.spec.ts
