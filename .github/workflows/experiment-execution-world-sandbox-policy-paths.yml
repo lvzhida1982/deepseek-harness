@@ -25,5 +25,13 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 运行 Sandbox Policy 跨执行世界路径红测试
-        run: pnpm exec vitest run packages/sandbox/sandbox-policy/tests/execution-world-path.spec.ts
+      - name: 生成 Sandbox Policy 跨执行世界路径实验实现
+        run: node packages/sandbox/sandbox-policy/tests/apply-execution-world-path-semantics.mjs
+      - name: 运行路径语义与本地安全聚焦测试
+        run: pnpm exec vitest run packages/sandbox/sandbox-policy/tests/execution-world-path.spec.ts packages/sandbox/sandbox-local/tests/policy-root-ownership.spec.ts
+      - name: 运行 Sandbox Policy 与 Local Sandbox 完整测试
+        run: pnpm exec vitest run packages/sandbox/sandbox-policy/tests packages/sandbox/sandbox-local/tests
+      - name: 运行受影响的 FS、Shell 与 Terminal 测试
+        run: pnpm exec vitest run packages/fs/fs-sandbox/tests packages/shell/bash-sandbox/tests packages/shell/pwsh-sandbox/tests packages/shell/tool-bash/tests packages/shell/tool-pwsh/tests packages/terminal/terminal-bash/tests
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
