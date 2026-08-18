@@ -1,0 +1,11 @@
+- id: bash
+  name: ../../plugins/world-aware.js
+  disabled: !!js ctx.get('executionPlatform')?.platform === 'win32'
+  config:
+    prefix: bash
+
+- id: pwsh
+  name: ../../plugins/world-aware.js
+  disabled: !!js ctx.get('executionPlatform')?.platform !== 'win32'
+  config:
+    prefix: pwsh
