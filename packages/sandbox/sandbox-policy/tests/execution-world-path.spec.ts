@@ -20,7 +20,10 @@ function foreignSession(cwd: string): Session {
 
 async function mounted(workspaceRoot?: string): Promise<Context> {
   const ctx = new Context()
-  await ctx.plugin(SandboxPolicyService, workspaceRoot === undefined ? {} : { workspaceRoot })
+  await ctx.plugin(SandboxPolicyService, {
+    canonicalizeWorkspaceRoot: false,
+    ...workspaceRoot === undefined ? {} : { workspaceRoot },
+  })
   return ctx
 }
 
