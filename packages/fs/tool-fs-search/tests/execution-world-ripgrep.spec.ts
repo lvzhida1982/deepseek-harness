@@ -10,7 +10,7 @@ import type {
 } from '@deepseek-ai/dsh-subprocess'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
-import ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
+import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
 import { rgPath } from '@vscode/ripgrep'
 import { describe, expect, it } from 'vitest'
 
