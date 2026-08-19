@@ -1,44 +1,43 @@
 /**
- * Derive the working directory a filesystem tool resolves relative paths against: the calling
- * agent's per-session workspace (`exec.agent.session.header.cwd`), so each session's
- * `read`/`write`/`edit` act on ITS workspace, not the server's launch dir — mirroring how
- * `dsh-tool-bash` defaults a bash `workdir` to the session cwd.
- * Non-agent calls return `undefined`, leaving the fallback in the provider rather than reading
- * `process.cwd()` at the tool boundary.
+ * Derive filesystem resolution options from the calling agent's per-session
+ * workspace without letting the Harness Host interpret another execution
+ * world's path spelling.
  * @module @deepseek-ai/dsh-tool-fs/session-cwd
  */
 
+import type { FileSystem } from '@deepseek-ai/dsh-fs'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import { canonicalPath } from '@deepseek-ai/dsh-sandbox'
 
 const PARENT_PATH_SEGMENT = /(?:^|[\\/])\.\.(?:[\\/]|$)/
 
 /**
- * The session workspace cwd for this call, or `undefined` when none applies.
- * @param exec - the tool-execution context; only its optional `agent` is read.
- * @param requestedPath - the path the provider will resolve; parent traversal
- *   makes a symlinked cwd's filesystem identity observable.
- * @returns the calling agent's session cwd, or undefined for a non-agent caller (the backend then applies its own default).
+ * Resolve the session cwd to the physical process path only when parent
+ * traversal makes symlink identity observable. The canonicalization belongs to
+ * the mounted filesystem execution world: resolve() follows its aliases and
+ * processPath() returns the path a same-world process can open.
  */
-export function sessionCwd(exec: ToolExecution, requestedPath: string): string | undefined {
+export async function sessionCwd(
+  fileSystem: Pick<FileSystem, 'resolve' | 'processPath'>,
+  exec: ToolExecution,
+  requestedPath: string,
+): Promise<string | undefined> {
   const cwd = exec.agent?.session.header.cwd
   if (cwd === undefined || (!PARENT_PATH_SEGMENT.test(cwd) && !PARENT_PATH_SEGMENT.test(requestedPath))) return cwd
-  return canonicalPath(cwd)
+  const target = await fileSystem.resolve(cwd, { signal: exec.signal })
+  return fileSystem.processPath(target)
 }
 
-/**
- * Resolution options shared by all model-facing filesystem tools.
- * @param exec - the tool-execution context supplying session cwd and cancellation.
- * @param requestedPath - the path the provider will resolve.
- * @param policyWorkspaceRoot - resolved per-call root, when a mutation carries sandbox policy.
- * @returns provider resolution options for the current tool call.
- */
-export function sessionResolveOptions(
+/** Resolution options shared by all model-facing filesystem tools. */
+export async function sessionResolveOptions(
+  fileSystem: Pick<FileSystem, 'resolve' | 'processPath'>,
   exec: ToolExecution,
   requestedPath: string,
   policyWorkspaceRoot?: string,
-): { cwd?: string; signal?: AbortSignal } {
-  const cwd = policyWorkspaceRoot ?? sessionCwd(exec, requestedPath)
+): Promise<{ cwd?: string; signal?: AbortSignal }> {
+  // Preserve the existing policy-root precedence. A resolved sandbox policy
+  // already owns its workspace identity; only the raw Session cwd needs the
+  // parent-traversal canonicalization above.
+  const cwd = policyWorkspaceRoot ?? await sessionCwd(fileSystem, exec, requestedPath)
   return {
     ...cwd !== undefined ? { cwd } : {},
     signal: exec.signal,
