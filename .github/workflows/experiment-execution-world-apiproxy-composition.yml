@@ -10,15 +10,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   apiproxy-composition:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -27,25 +25,9 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 生成 ApiProxy 执行世界会话装配策略原型
-        run: node packages/host/apiproxy/tests/apply-execution-world-session-strategy.mjs
-      - name: 增加 fresh 与 cold 装配策略聚焦测试
-        run: node packages/host/apiproxy/tests/apply-execution-world-session-strategy-tests.mjs
-      - name: 增加 fork 执行世界继承聚焦测试
-        run: node packages/host/apiproxy/tests/apply-execution-world-fork-strategy-test.mjs
       - name: 运行 Preset、Cold、Fork 聚焦测试
         run: pnpm exec vitest run packages/host/apiproxy/tests/api-proxy-agent-preset.spec.ts packages/host/apiproxy/tests/api-proxy-cold.spec.ts packages/host/apiproxy/tests/api-proxy-fork.spec.ts
       - name: 运行 ApiProxy 完整测试
         run: pnpm exec vitest run packages/host/apiproxy/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
-      - name: 仅提交已验证的 ApiProxy 源码与聚焦行为测试
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            packages/host/apiproxy/src/api-proxy.ts \
-            packages/host/apiproxy/tests/api-proxy-agent-preset.spec.ts \
-            packages/host/apiproxy/tests/api-proxy-fork.spec.ts
-          git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 ApiProxy 执行世界装配策略'
-          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
