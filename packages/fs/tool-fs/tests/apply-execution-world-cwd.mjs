@@ -22,7 +22,7 @@ const PARENT_PATH_SEGMENT = /(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)/
  * processPath() returns the path a same-world process can open.
  */
 export async function sessionCwd(
-  fileSystem: FileSystem,
+  fileSystem: Pick<FileSystem, 'resolve' | 'processPath'>,
   exec: ToolExecution,
   requestedPath: string,
 ): Promise<string | undefined> {
@@ -34,7 +34,7 @@ export async function sessionCwd(
 
 /** Resolution options shared by all model-facing filesystem tools. */
 export async function sessionResolveOptions(
-  fileSystem: FileSystem,
+  fileSystem: Pick<FileSystem, 'resolve' | 'processPath'>,
   exec: ToolExecution,
   requestedPath: string,
   policyWorkspaceRoot?: string,
@@ -116,7 +116,7 @@ const newBlock = `describe('session cwd resolution', () => {
       return { targetKey: FsTargetKey(physical), displayPath: path }
     },
     processPath(target: FsTarget) { return String(target.targetKey) },
-  } as FileSystem
+  } as Pick<FileSystem, 'resolve' | 'processPath'>
 
   it('retains ordinary spelling but resolves the cwd in the filesystem world before parent traversal', async () => {
     const cwd = process.cwd()
@@ -146,7 +146,7 @@ await writeFile(new URL('execution-world-paths.spec.ts', tests), `import { mkdir
 import { resolve, win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FsTargetKey, type FileSystem, type FsTarget } from '@deepseek-ai/dsh-fs'
-import { sessionCwd } from '../src/session-cwd.ts'
+import { sessionCwd, sessionResolveOptions } from '../src/session-cwd.ts'
 
 const WINDOWS_CWD = win32.resolve('D:/Project/packages/app')
 const WINDOWS_PARENT_REQUEST = win32.join('..', 'shared.txt')
@@ -164,7 +164,7 @@ describe('tool-fs execution-world cwd', () => {
         return { targetKey: FsTargetKey(physical), displayPath: physical }
       },
       processPath(target: FsTarget) { return String(target.targetKey) },
-    } as FileSystem
+    } as Pick<FileSystem, 'resolve' | 'processPath'>
     try {
       expect(await sessionCwd(windowsFs, execution(WINDOWS_CWD) as never, WINDOWS_PARENT_REQUEST))
         .toBe(WINDOWS_CWD)
@@ -174,7 +174,25 @@ describe('tool-fs execution-world cwd', () => {
       rmSync(WINDOWS_CWD, { recursive: true, force: true })
     }
   })
+
+  it('does not add a provider cwd round-trip for an ordinary child path', async () => {
+    let resolveCalls = 0
+    const sameWorldFs = {
+      async resolve(path: string) {
+        resolveCalls += 1
+        return { targetKey: FsTargetKey(path), displayPath: path }
+      },
+      processPath(target: FsTarget) { return String(target.targetKey) },
+    } as Pick<FileSystem, 'resolve' | 'processPath'>
+    const options = await sessionResolveOptions(
+      sameWorldFs,
+      execution(WINDOWS_CWD) as never,
+      'child.txt',
+    )
+    expect(options.cwd).toBe(WINDOWS_CWD)
+    expect(resolveCalls).toBe(0)
+  })
 })
 `)
 
-console.log('已生成 tool-fs 同执行世界 cwd canonicalization 实验实现')
+console.log('已生成 tool-fs 完整的同执行世界 cwd canonicalization 实验实现')
