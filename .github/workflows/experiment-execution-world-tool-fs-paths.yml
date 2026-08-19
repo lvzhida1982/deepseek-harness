@@ -37,15 +37,12 @@ jobs:
         run: pnpm exec vitest run packages/fs/tool-fs/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
-      - name: 提交验证后的 tool-fs 实现并移除生成脚手架
+      - name: 提交验证后的 tool-fs 实现并切换清洁验证
+        if: github.event_name == 'push'
         run: |
-          rm -f \
-            packages/fs/tool-fs/tests/apply-execution-world-cwd-semantics.mjs \
-            packages/fs/tool-fs/tests/apply-execution-world-cwd.mjs \
-            packages/fs/tool-fs/tests/fix-execution-world-path-test.mjs \
-            packages/fs/tool-fs/tests/fix-execution-world-path-types.mjs
+          node packages/fs/tool-fs/tests/finalize-execution-world-cwd-semantics.mjs
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 tool-fs 执行世界路径实现'
-          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
+          git push origin HEAD:${{ github.ref_name }}
