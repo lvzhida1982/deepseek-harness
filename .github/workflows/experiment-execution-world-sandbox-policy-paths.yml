@@ -1,6 +1,7 @@
 name: Execution World Sandbox Policy Paths Experiment
 
-# 触发 push：把已通过生成态测试的源码写回实验分支，并切换到只读清洁验证。
+# 实验阶段允许 PR 工作流在全部验证通过后把已测试源码写回当前实验分支；
+# finalizer 会同时移除生成脚手架并把本 workflow 切回只读清洁验证。
 on:
   push:
     branches:
@@ -18,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -37,11 +40,10 @@ jobs:
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
       - name: 提交验证后的 Sandbox Policy 路径实现并清理脚手架
-        if: github.event_name == 'push'
         run: |
           node packages/sandbox/sandbox-policy/tests/finalize-execution-world-path-semantics.mjs
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 Sandbox Policy 执行世界路径实现'
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
