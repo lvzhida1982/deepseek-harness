@@ -4,7 +4,7 @@ import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
-import SessionStore from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
@@ -128,5 +128,33 @@ describe('agent preset generalized placement', () => {
     await expect(ctx.agentPresets.recompose(agent.ctx, 'world-aware-alt', worldB.placement))
       .rejects.toThrow('different preset placement')
     expect(toolNames(ctx, agent)).toEqual(['world-A'])
+  })
+
+  it('mounts world-scoped preset capabilities onto real host-created agents', async () => {
+    const ctx = await harness()
+    const worldA = executionWorld(ctx, 'A')
+    const worldB = executionWorld(ctx, 'B')
+
+    const handleA = await ctx.agents.create({
+      sessionId: SessionId('real-world-a'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'world-aware', worldA.placement).then(() => undefined),
+    })
+    const handleB = await ctx.agents.create({
+      sessionId: SessionId('real-world-b'),
+      setup: agentCtx => ctx.agentPresets.mount(agentCtx, 'world-aware', worldB.placement).then(() => undefined),
+    })
+
+    try {
+      expect(toolNames(ctx, handleA.agent)).toEqual(['world-A'])
+      expect(toolNames(ctx, handleB.agent)).toEqual(['world-B'])
+      // ReactLoopAgent itself is minted from the AgentLoop host context. The
+      // execution-world service belongs to the preset's Cordis ancestry, while
+      // the Agent reaches the preset through dsh-scope parentage.
+      expect(handleA.agent.ctx.get('worldMarker')).toBeUndefined()
+      expect(handleB.agent.ctx.get('worldMarker')).toBeUndefined()
+    } finally {
+      await handleA.dispose()
+      await handleB.dispose()
+    }
   })
 })
