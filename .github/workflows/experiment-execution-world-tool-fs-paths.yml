@@ -25,12 +25,10 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 生成 tool-fs 同执行世界 cwd 修复原型
-        run: node packages/fs/tool-fs/tests/apply-execution-world-cwd-semantics.mjs
-      - name: 修正 Windows 路径测试夹具
-        run: node packages/fs/tool-fs/tests/fix-execution-world-path-test.mjs
-      - name: 补齐执行世界路径测试类型
-        run: node packages/fs/tool-fs/tests/fix-execution-world-path-types.mjs
+      - name: 生成完整的同执行世界 cwd canonicalization 原型
+        run: node packages/fs/tool-fs/tests/apply-execution-world-cwd.mjs
+      - name: 恢复当前分支的跨执行世界约束测试
+        run: git checkout -- packages/fs/tool-fs/tests/execution-world-paths.spec.ts
       - name: 运行 tool-fs 跨执行世界 cwd 聚焦测试
         run: pnpm exec vitest run packages/fs/tool-fs/tests/execution-world-paths.spec.ts
       - name: 运行 tool-fs 完整测试
