@@ -1,5 +1,6 @@
 name: Execution World Sandbox Policy Paths Experiment
 
+# 触发一次 push 验证，让已通过测试的源码正式写回实验分支。
 on:
   push:
     branches:
