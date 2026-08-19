@@ -1,0 +1,44 @@
+name: Agent Preset Placement Provider Experiment
+
+on:
+  push:
+    branches:
+      - experiment/agent-preset-placement-provider
+  pull_request:
+    branches:
+      - experiment/execution-world-placement
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  placement-provider:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 生成 Placement Provider 实验实现
+        run: node packages/preset/agent-presets/tests/apply-placement-provider.mjs
+      - name: 运行 Placement Provider 聚焦测试
+        run: pnpm exec vitest run packages/preset/agent-presets/tests/placement-provider.spec.ts packages/preset/agent-presets/tests/placement.spec.ts
+      - name: 运行 agent-presets 完整测试
+        run: pnpm exec vitest run packages/preset/agent-presets/tests
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
+      - name: 仅提交验证后的 Placement Provider 源码
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add packages/preset/agent-presets/src/index.ts
+          git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 Agent Preset Placement Provider 实现 [skip ci]'
+          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
