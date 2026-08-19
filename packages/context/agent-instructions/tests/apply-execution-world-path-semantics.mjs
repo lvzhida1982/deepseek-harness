@@ -36,8 +36,8 @@ await rewrite('packages/context/agent-instructions/src/files.ts', [
   ],
   [
     "function signalOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {\n  return signal === undefined ? undefined : { signal }\n}\n",
-    "function signalOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {\n  return signal === undefined ? undefined : { signal }\n}\n\nfunction pathSemantics(fileSystem?: FileSystem): FsPathSemantics {\n  return fileSystem?.path ?? hostPath\n}\n",
-    '增加路径语义选择器',
+    `function signalOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {\n  return signal === undefined ? undefined : { signal }\n}\n\nfunction pathSemantics(fileSystem?: FileSystem): FsPathSemantics {\n  return fileSystem?.path ?? hostPath\n}\n\n// displayPath is logical/model-facing state. Treat both separators as syntax so\n// durable scope keys do not depend on whichever OS happens to host Harness.\nfunction logicalDirname(displayPath: string): string {\n  const normalized = displayPath.replaceAll('\\\\', '/')\n  const index = normalized.lastIndexOf('/')\n  if (index < 0) return '.'\n  if (index === 0) return '/'\n  return normalized.slice(0, index)\n}\n`,
+    '增加路径语义选择器与逻辑目录解析',
   ],
   [
     `): Promise<string> {\n  let current = resolve(cwd)\n  for (;;) {\n    for (const marker of markers) {\n      if (await existsAsMarker(join(current, marker), fileSystem, signal)) return current\n    }\n    const parent = dirname(current)\n    if (parent === current) return resolve(cwd)\n    current = parent\n  }\n}\n`,
@@ -88,6 +88,21 @@ await rewrite('packages/context/agent-instructions/src/files.ts', [
     `  for (const dir of ancestorChain(projectRoot, cwd)) {\n`,
     `  for (const dir of ancestorChain(projectRoot, cwd, paths)) {\n`,
     '发现祖先链使用执行世界路径语义',
+  ],
+  [
+    `    const dir = dirname(file.displayPath)\n`,
+    `    const dir = logicalDirname(file.displayPath)\n`,
+    '内容去重按逻辑 displayPath 分目录',
+  ],
+  [
+    `  const { directory, candidateName } = decodeScopeKey(scope)\n  const dir = directory === USER_GLOBAL_DIRECTORY\n    ? resolved.dshHome\n    : directory === '.' ? projectRoot : join(projectRoot, directory)\n  const absolutePath = join(dir, candidateName)\n`,
+    `  const { directory, candidateName } = decodeScopeKey(scope)\n  const paths = fileSystem.path\n  const dir = directory === USER_GLOBAL_DIRECTORY\n    ? resolved.dshHome\n    : directory === '.' ? projectRoot : paths.join(projectRoot, directory)\n  const absolutePath = paths.join(dir, candidateName)\n`,
+    '动态 scope 探测使用 provider 路径语义',
+  ],
+  [
+    `    displayPath: directory === USER_GLOBAL_DIRECTORY ? userGlobalDisplayPath(resolved.dshHome) : relativeDisplay(projectRoot, absolutePath),\n`,
+    `    displayPath: directory === USER_GLOBAL_DIRECTORY ? userGlobalDisplayPath(resolved.dshHome) : relativeDisplay(projectRoot, absolutePath, paths),\n`,
+    '动态 scope 显示路径使用 provider 路径语义',
   ],
 ])
 
