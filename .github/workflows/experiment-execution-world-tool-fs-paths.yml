@@ -10,15 +10,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   tool-fs-paths:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -27,22 +25,9 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 生成完整的同执行世界 cwd canonicalization 原型
-        run: node packages/fs/tool-fs/tests/apply-execution-world-cwd.mjs
-      - name: 恢复当前分支的跨执行世界约束测试
-        run: git checkout -- packages/fs/tool-fs/tests/execution-world-paths.spec.ts
       - name: 运行 tool-fs 跨执行世界 cwd 聚焦测试
         run: pnpm exec vitest run packages/fs/tool-fs/tests/execution-world-paths.spec.ts
       - name: 运行 tool-fs 完整测试
         run: pnpm exec vitest run packages/fs/tool-fs/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
-      - name: 提交验证后的 tool-fs 实现并切换清洁验证
-        if: github.event_name == 'push'
-        run: |
-          node packages/fs/tool-fs/tests/finalize-execution-world-cwd-semantics.mjs
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 tool-fs 执行世界路径实现'
-          git push origin HEAD:${{ github.ref_name }}
