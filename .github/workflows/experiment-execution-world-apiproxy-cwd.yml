@@ -25,5 +25,13 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 运行 ApiProxy 执行世界 cwd 红测试
+      - name: 生成 ApiProxy 执行世界 cwd 实验实现
+        run: node packages/host/apiproxy/tests/apply-execution-world-cwd-semantics.mjs
+      - name: 运行 ApiProxy 执行世界 cwd 聚焦测试
         run: pnpm exec vitest run packages/host/apiproxy/tests/api-proxy-execution-world-cwd.spec.ts
+      - name: 运行 ApiProxy 完整测试
+        run: pnpm exec vitest run packages/host/apiproxy/tests
+      - name: 运行 Web Preset 真实组合 E2E
+        run: pnpm exec vitest run apps/cli/tests/web-agent-presets.e2e.ts
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
