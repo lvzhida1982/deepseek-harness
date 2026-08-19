@@ -10,13 +10,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   placement-provider:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -33,3 +35,12 @@ jobs:
         run: pnpm exec vitest run packages/preset/agent-presets/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
+      - name: 提交验证后的 Placement Provider 实现并切换清洁验证
+        if: github.event_name == 'push'
+        run: |
+          node packages/preset/agent-presets/tests/finalize-placement-provider.mjs
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 Agent Preset Placement Provider 实现'
+          git push origin HEAD:${{ github.ref_name }}
