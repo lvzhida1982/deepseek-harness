@@ -148,8 +148,8 @@ import { describe, expect, it } from 'vitest'
 import { FsTargetKey, type FileSystem, type FsTarget } from '@deepseek-ai/dsh-fs'
 import { sessionCwd } from '../src/session-cwd.ts'
 
-const WINDOWS_CWD = String.raw\`D:\\\\Project\\\\packages\\\\app\`
-const WINDOWS_PARENT_REQUEST = String.raw\`..\\\\shared.txt\`
+const WINDOWS_CWD = String.raw\`D:\\Project\\packages\\app\`
+const WINDOWS_PARENT_REQUEST = String.raw\`..\\shared.txt\`
 const execution = (cwd: string) => ({ agent: { session: { header: { cwd } } } })
 
 describe('tool-fs execution-world cwd', () => {
