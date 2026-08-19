@@ -110,7 +110,5 @@ describe('agent instructions execution-world paths', () => {
     const text = JSON.stringify(rendered)
     expect(text).toContain('root rules')
     expect(text).toContain('app rules')
-
-    await ctx.dispose()
   })
 })
