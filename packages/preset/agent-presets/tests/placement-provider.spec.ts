@@ -9,7 +9,7 @@ import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import AgentPresets, { type PresetPlacement } from '@deepseek-ai/dsh-agent-presets'
+import AgentPresets, { type PresetBearingSession, type PresetPlacement } from '@deepseek-ai/dsh-agent-presets'
 import { createScope, type ScopeKey } from '@deepseek-ai/dsh-scope'
 import { describe, expect, it } from 'vitest'
 
@@ -61,7 +61,7 @@ describe('agent preset placement provider', () => {
     const agentCalls: string[] = []
 
     ctx.provide('agentPresetPlacement', {
-      forAgent(agentCtx) {
+      forAgent(agentCtx: Context) {
         const cwd = agentCtx.agent?.session.header.cwd
         agentCalls.push(cwd ?? 'missing')
         return cwd === '/world-a' ? a : b
@@ -102,7 +102,7 @@ describe('agent preset placement provider', () => {
       forAgent() {
         throw new Error('live resolver must not run for cold standing lookup')
       },
-      forSession(session) {
+      forSession(session: PresetBearingSession) {
         const cwd = session.header.cwd ?? 'missing'
         coldCalls.push(cwd)
         return cwd === '/world-a' ? a : b
