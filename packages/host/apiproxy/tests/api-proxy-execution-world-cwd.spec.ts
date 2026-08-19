@@ -79,7 +79,6 @@ describe('ApiProxy fresh Session execution-world cwd', () => {
       expect(existsSync(cwd)).toBe(false)
     } finally {
       rmSync(cwd, { recursive: true, force: true })
-      await ctx.dispose()
     }
   })
 })
