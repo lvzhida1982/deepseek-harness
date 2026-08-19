@@ -4,7 +4,7 @@ const path = new URL('../src/index.ts', import.meta.url)
 let source = await readFile(path, 'utf8')
 
 function replaceExact(before, after, label) {
-  if (source.includes(after)) return
+  if (after !== '' && source.includes(after)) return
   if (!source.includes(before)) throw new Error(`未找到预期源码片段：${label}`)
   source = source.replace(before, after)
 }
