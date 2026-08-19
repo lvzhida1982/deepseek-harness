@@ -17,6 +17,10 @@ import { loadBaselineInstructions } from '@deepseek-ai/dsh-agent-instructions'
 class WindowsExecutionWorldFs extends FileSystem {
   readonly entries = new Map<string, { type: FsInfo['type']; content?: string }>()
 
+  get path() {
+    return win32
+  }
+
   override async resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<FsTarget> {
     opts?.signal?.throwIfAborted()
     const absolute = win32.resolve(opts?.cwd ?? 'C:\\', path)
