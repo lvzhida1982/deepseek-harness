@@ -34,6 +34,8 @@ import { copyComposition, deleteComposition, readComposition } from './authoring
 import { mountPreset, serviceForAgent, standingMountFor } from './mount.ts'
 import { PresetExistsError } from './authoring.ts'
 import { PresetMountError, UnknownPresetError, type AgentPreset, type Config, type PresetRoot } from './preset.ts'
+import { resolveSessionPreset, type PresetBearingSession } from './session.ts'
+import type { PresetPlacement } from './placement-provider.ts'
 import type {} from './types.ts'
 
 /** Settings namespace carrying the user's chosen default preset. */
@@ -43,14 +45,6 @@ export const SETTINGS_NAMESPACE = 'agent-presets'
 export interface AgentPresetSettings {
   /** Preset mounted when a session names none. */
   default?: string
-}
-
-/** Runtime location under which one standing preset generation is composed. */
-export interface PresetPlacement {
-  /** Cordis context that owns the preset's service ancestry. */
-  readonly ctx: Context
-  /** dsh-scope parent that owns the preset's registry/event ancestry. */
-  readonly parent: ScopeKey
 }
 
 /** Runtime schema for the user-writable slice. */
@@ -71,6 +65,7 @@ export {
   PresetNotWritableError, readComposition, writableRoot,
 } from './authoring.ts'
 export { resolveSessionPreset, type PresetBearingSession } from './session.ts'
+export { AgentPresetPlacementProvider, type PresetPlacement } from './placement-provider.ts'
 export { PresetMountError, UnknownPresetError } from './preset.ts'
 export type { AgentPreset, Config, PresetRoot, PresetTrust } from './preset.ts'
 
@@ -298,13 +293,15 @@ export class AgentPresets extends Service {
       throw new Error('agent-presets: refusing to compose an unscoped context; the scope key is what joins an agent to its preset')
     }
     const preset = await this.resolveMountable(id)
-    const standing = await this.ensureStanding(preset, placement)
+    const resolvedPlacement = placement
+      ?? await agentCtx.get('agentPresetPlacement')?.forAgent(agentCtx, preset)
+    const standing = await this.ensureStanding(preset, resolvedPlacement)
     // The one bind of this agent's ancestry. The binding is the only re-link
     // authority, held privately so nothing outside this roster can move a
     // composed agent to another preset; a later recompose layer re-links
     // through it under the caller-owned blank-session contract.
     this.bindings.set(agentKey, bindScopeParent(agentKey, standing.key))
-    this.agentPlacements.set(agentKey, placement ?? null)
+    this.agentPlacements.set(agentKey, resolvedPlacement ?? null)
     return preset
   }
 
@@ -484,11 +481,13 @@ export class AgentPresets extends Service {
     }
     const binding = this.bindings.get(agentKey)
     const currentPlacement = this.agentPlacements.get(agentKey)
-    const targetPlacement = binding === undefined ? placement : currentPlacement ?? undefined
+    const preset = await this.resolveMountable(id)
+    const targetPlacement = binding === undefined
+      ? placement ?? await agentCtx.get('agentPresetPlacement')?.forAgent(agentCtx, preset)
+      : currentPlacement ?? undefined
     if (binding !== undefined && placement !== undefined && !samePlacement(targetPlacement, placement)) {
       throw new Error('agent-presets: refusing to move a composed agent to a different preset placement')
     }
-    const preset = await this.resolveMountable(id)
     const standing = await this.ensureStanding(preset, targetPlacement)
     if (binding === undefined) {
       this.bindings.set(agentKey, bindScopeParent(agentKey, standing.key))
@@ -512,6 +511,17 @@ export class AgentPresets extends Service {
    */
   async standingKeyFor(id?: string, placement?: PresetPlacement): Promise<ScopeKey> {
     const preset = await this.resolveMountable(id)
+    return (await this.ensureStanding(preset, placement)).key
+  }
+
+  /**
+   * Resolve a detached Session's standing key through the deployment placement
+   * policy without resuming an Agent. No provider preserves the historical host
+   * placement.
+   */
+  async standingKeyForSession(session: PresetBearingSession): Promise<ScopeKey> {
+    const preset = await this.resolveMountable(resolveSessionPreset(session))
+    const placement = await this.selfCtx.get('agentPresetPlacement')?.forSession(session, preset)
     return (await this.ensureStanding(preset, placement)).key
   }
 
