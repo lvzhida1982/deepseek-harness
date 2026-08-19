@@ -29,6 +29,8 @@ jobs:
         run: node packages/fs/tool-fs/tests/apply-execution-world-cwd-semantics.mjs
       - name: 修正 Windows 路径测试夹具
         run: node packages/fs/tool-fs/tests/fix-execution-world-path-test.mjs
+      - name: 补齐执行世界路径测试类型
+        run: node packages/fs/tool-fs/tests/fix-execution-world-path-types.mjs
       - name: 运行 tool-fs 跨执行世界 cwd 聚焦测试
         run: pnpm exec vitest run packages/fs/tool-fs/tests/execution-world-paths.spec.ts
       - name: 运行 tool-fs 完整测试
