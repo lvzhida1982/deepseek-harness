@@ -10,15 +10,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   fs-search-ripgrep:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.7.0
@@ -27,18 +25,9 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 生成 fs-search 执行世界 ripgrep 实验实现
-        run: node packages/fs/tool-fs-search/tests/apply-execution-world-ripgrep.mjs
       - name: 运行 execution-world ripgrep 聚焦测试
         run: pnpm exec vitest run packages/fs/tool-fs-search/tests/execution-world-ripgrep.spec.ts
       - name: 运行 tool-fs-search 完整测试
         run: pnpm exec vitest run packages/fs/tool-fs-search/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
-      - name: 仅提交验证后的 fs-search 源码
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add packages/fs/tool-fs-search/src/search-core.ts packages/fs/tool-fs-search/src/glob.ts packages/fs/tool-fs-search/src/grep.ts packages/fs/tool-fs-search/src/index.ts
-          git diff --cached --quiet || git commit -m '验证：提交通过完整测试的 fs-search 执行世界 ripgrep 实现 [skip ci]'
-          git push origin HEAD:${{ github.event.pull_request.head.ref || github.ref_name }}
