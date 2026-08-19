@@ -287,3 +287,56 @@ describe('sessions.fork', () => {
     await ctx.fiber.dispose()
   })
 })
+
+
+describe('sessions.fork execution-world composition strategy', () => {
+  it('resolves the child placement from the new session id, inherited cwd, and source session id', async () => {
+    const ctx = await composed()
+    const source = liveAgent(ctx, 'session-placement-source', 1)
+    const placement = { ctx: new Context(), parent: {} as never }
+    const resolved: unknown[] = []
+    const mounted: unknown[] = []
+
+    ctx.provide('agentPresets', {
+      defaultId: 'standard',
+      resolve: (id?: string) => Promise.resolve({
+        id: id ?? 'standard',
+        trust: 'system',
+        path: '/presets/standard/agent.cordis.yml',
+      }),
+      mount: (_agentCtx: Context, _id?: string, received?: unknown) => {
+        mounted.push(received)
+        return Promise.resolve({
+          id: 'standard',
+          trust: 'system',
+          path: '/presets/standard/agent.cordis.yml',
+        })
+      },
+    } as never)
+
+    const proxy = createApiProxy(ctx, {
+      defaultModelSelection: () => ({ provider: 'default-provider', model: 'default-model' }),
+      cwd: '/tmp',
+      resolveSessionPlacement: async (session: unknown) => {
+        resolved.push(session)
+        return placement
+      },
+    })
+
+    const response = await proxy.sessions.fork(request({ sessionId: source.id }))
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) return
+
+    expect(resolved).toEqual([{
+      sessionId: response.result.value.sessionId,
+      cwd: '/proj',
+      parentSessionId: source.id,
+    }])
+    expect(mounted).toEqual([placement])
+    expect(ctx.sessions.get(response.result.value.sessionId)?.header).toMatchObject({
+      parentSession: source.id,
+      cwd: '/proj',
+    })
+    await ctx.fiber.dispose()
+  })
+})
