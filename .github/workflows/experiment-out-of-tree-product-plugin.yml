@@ -1,0 +1,37 @@
+name: Out-of-tree Product Plugin Experiment
+
+on:
+  push:
+    branches:
+      - experiment/out-of-tree-product-plugin
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  product-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行树外产品插件聚焦测试
+        run: pnpm exec vitest run packages/typert/generator/tests/out-of-tree-product-plugin.spec.ts
+      - name: 运行 Typert Generator 完整测试
+        run: pnpm exec vitest run packages/typert/generator/tests
+      - name: 运行 Client Module 外部包发现回归
+        run: pnpm exec vitest run packages/client/modules/tests/node-half.client.spec.ts
+      - name: 构建 Host 与 Client 库
+        run: pnpm run build:lib
+      - name: 运行生成 Remote 到 Connection 的 built-artifact E2E
+        run: pnpm exec vitest run packages/api/remotes/tests/built-lib.e2e.ts
