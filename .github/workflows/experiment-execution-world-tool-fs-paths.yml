@@ -26,7 +26,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: 生成 tool-fs 同执行世界 cwd 修复原型
-        run: node packages/fs/tool-fs/tests/apply-execution-world-cwd.mjs
+        run: node packages/fs/tool-fs/tests/apply-execution-world-cwd-semantics.mjs
       - name: 运行 tool-fs 跨执行世界 cwd 聚焦测试
         run: pnpm exec vitest run packages/fs/tool-fs/tests/execution-world-paths.spec.ts
       - name: 运行 tool-fs 完整测试
