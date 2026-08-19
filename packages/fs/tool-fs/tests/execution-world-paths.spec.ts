@@ -30,4 +30,24 @@ describe('tool-fs execution-world cwd', () => {
       rmSync(WINDOWS_CWD, { recursive: true, force: true })
     }
   })
+
+  it('does not add a provider cwd round-trip for an ordinary child path', async () => {
+    let resolveCalls = 0
+    const sameWorldFs = {
+      async resolve(path: string) {
+        resolveCalls += 1
+        return { targetKey: path, displayPath: path }
+      },
+      processPath(target: { targetKey: unknown }) {
+        return String(target.targetKey)
+      },
+    }
+    const options = await sessionResolveOptions(
+      sameWorldFs as never,
+      execution(WINDOWS_CWD) as never,
+      'child.txt',
+    )
+    expect(options.cwd).toBe(WINDOWS_CWD)
+    expect(resolveCalls).toBe(0)
+  })
 })
