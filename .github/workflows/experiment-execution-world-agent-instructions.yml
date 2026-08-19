@@ -25,5 +25,11 @@ jobs:
           node-version: '24'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: 运行 Windows 执行世界指令发现红测试
+      - name: 生成文件系统执行世界路径语义原型
+        run: node packages/context/agent-instructions/tests/apply-execution-world-path-semantics.mjs
+      - name: 运行 Windows 执行世界指令发现测试
         run: pnpm exec vitest run packages/context/agent-instructions/tests/execution-world-paths.spec.ts
+      - name: 运行 agent-instructions 完整测试
+        run: pnpm exec vitest run packages/context/agent-instructions/tests
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
