@@ -1,0 +1,33 @@
+name: Execution World ApiProxy Composition Experiment
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-apiproxy-composition
+  pull_request:
+    branches:
+      - experiment/execution-world-placement
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apiproxy-composition:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 生成 ApiProxy 执行世界会话装配策略原型
+        run: node packages/host/apiproxy/tests/apply-execution-world-session-strategy.mjs
+      - name: 运行 Preset、Cold、Fork 相关 ApiProxy 测试
+        run: pnpm exec vitest run packages/host/apiproxy/tests/api-proxy-agent-preset.spec.ts packages/host/apiproxy/tests/api-proxy-cold.spec.ts packages/host/apiproxy/tests/api-proxy-fork.spec.ts
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
