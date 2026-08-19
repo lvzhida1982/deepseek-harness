@@ -5,7 +5,7 @@
  * rebuilding it differently would replay tool calls the new agent cannot make.
  */
 
-import { mkdtempSync, realpathSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -51,7 +51,10 @@ function roster(ids: readonly string[], userIds: readonly string[] = []): unknow
       if (!ids.includes(wanted)) return Promise.reject(new UnknownPresetError(wanted, ids))
       return Promise.resolve(presetOf(wanted))
     },
-    mount: (_ctx: Context, id?: string) => Promise.resolve(presetOf(id ?? ids[0] ?? '')),
+    mount: (_ctx: Context, id?: string, placement?: unknown) => {
+      mountPlacementRequests.push(placement)
+      return Promise.resolve(presetOf(id ?? ids[0] ?? ''))
+    },
     // What a real mount leaves behind: a service instance only the agent that
     // mounted it can be used to address. The doubles are per agent so a test
     // can tell "this session's" from "some session's".
@@ -76,9 +79,10 @@ function roster(ids: readonly string[], userIds: readonly string[] = []): unknow
       return Promise.resolve({ id, trust: 'system', path: `/presets/${id}.yml` })
     },
     // The standing scope key a cold transcript read resolves presenters in.
-    standingKeyFor: (id?: string) => {
+    standingKeyFor: (id?: string, placement?: unknown) => {
       const wanted = id ?? ids[0] ?? ''
       standingKeyRequests.push(wanted)
+      standingPlacementRequests.push(placement)
       if (!ids.includes(wanted) || failingStandingKeys.has(wanted)) {
         return Promise.reject(new UnknownPresetError(wanted, ids))
       }
@@ -95,6 +99,8 @@ function roster(ids: readonly string[], userIds: readonly string[] = []): unknow
 /** Standing keys the roster double minted, and the ids readers asked for. */
 const standingKeys = new Map<string, object>()
 const standingKeyRequests: string[] = []
+const mountPlacementRequests: unknown[] = []
+const standingPlacementRequests: unknown[] = []
 /** Preset ids whose standing mount the double reports as unusable. */
 const failingStandingKeys = new Set<string>()
 
@@ -726,5 +732,72 @@ describe('session.history presenter scope', () => {
     } finally {
       failingStandingKeys.delete('standard')
     }
+  })
+})
+
+
+describe('session.create execution-world composition strategy', () => {
+  it('delegates fresh cwd preparation and passes the resolved placement to the preset mount', async () => {
+    const placement = { ctx: new Context(), parent: {} as never }
+    const prepared: unknown[] = []
+    const resolved: unknown[] = []
+    mountPlacementRequests.length = 0
+
+    const { api, cwd } = await harness(['standard'], undefined, {
+      defaults: {
+        prepareSessionCwd: async (session: unknown) => { prepared.push(session) },
+        resolveSessionPlacement: async (session: unknown) => {
+          resolved.push(session)
+          return placement
+        },
+      },
+    })
+    const remoteCwd = join(cwd, 'must-not-exist-on-host', 'project')
+    expect(existsSync(remoteCwd)).toBe(false)
+
+    const response = await api.sessions.create(request({
+      sessionId: SessionId('strategy-fresh'),
+      cwd: remoteCwd,
+      agentPreset: 'standard',
+    }))
+
+    expect(response.result.ok).toBe(true)
+    expect(existsSync(remoteCwd)).toBe(false)
+    expect(prepared).toEqual([{ sessionId: 'strategy-fresh', cwd: remoteCwd }])
+    expect(resolved).toEqual([{ sessionId: 'strategy-fresh', cwd: remoteCwd }])
+    expect(mountPlacementRequests.at(-1)).toBe(placement)
+  })
+
+  it('resolves the cold presenter standing key in the recorded session placement', async () => {
+    const sessionId = SessionId('strategy-cold')
+    const meta = {
+      version: 0,
+      id: sessionId,
+      createdAt: 1,
+      cwd: '/remote/project',
+      agentPreset: 'standard',
+    }
+    const placement = { ctx: new Context(), parent: {} as never }
+    const resolved: unknown[] = []
+    standingPlacementRequests.length = 0
+    const persistence = {
+      list: () => Promise.resolve([meta]),
+      inspect: () => Promise.resolve({ meta, events: [] }),
+      locate: () => undefined,
+    }
+    const { api } = await harness(['standard'], persistence, {
+      defaults: {
+        resolveSessionPlacement: async (session: unknown) => {
+          resolved.push(session)
+          return placement
+        },
+      },
+    })
+
+    const response = await api.sessions.history(request({ sessionId }))
+
+    expect(response.result.ok).toBe(true)
+    expect(resolved).toEqual([{ sessionId: 'strategy-cold', cwd: '/remote/project' }])
+    expect(standingPlacementRequests.at(-1)).toBe(placement)
   })
 })

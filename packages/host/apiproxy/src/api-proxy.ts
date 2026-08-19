@@ -32,7 +32,7 @@ import {
   InvalidPresetIdError, PresetExistsError, PresetMountError,
   PresetNotWritableError, resolveSessionPreset, UnknownPresetError,
 } from '@deepseek-ai/dsh-agent-presets'
-import type { PresetBearingSession } from '@deepseek-ai/dsh-agent-presets'
+import type { PresetBearingSession, PresetPlacement } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {
   ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
@@ -601,6 +601,13 @@ function directoryError(error: unknown): RpcError {
   return { code: 'internal', message: error instanceof Error ? error.message : String(error), details: {} }
 }
 
+/** Stable Session identity facts a deployment may use to resolve an execution placement. */
+export interface ApiProxySessionContext {
+  sessionId: SessionId
+  cwd?: string
+  parentSessionId?: SessionId
+}
+
 /** Resolved Agent model and project-directory defaults consumed by the API implementation. */
 export interface ApiProxyDefaults {
   /**
@@ -620,6 +627,17 @@ export interface ApiProxyDefaults {
   saveDefaultModelSelection?: (selection: ModelSelection) => Promise<void>
   /** Default project directory for new sessions whose create request carries no cwd. */
   cwd: string
+  /**
+   * Prepare a fresh Session's cwd in the deployment-selected execution world.
+   * Absent, ApiProxy preserves the historical Host-local mkdir behavior.
+   */
+  prepareSessionCwd?: (session: ApiProxySessionContext & { cwd: string }) => Promise<void>
+  /**
+   * Resolve the runtime placement under which this Session's preset generation
+   * is mounted. Called for fresh create, resume, cold presentation, and fork.
+   * Absent, presets retain their historical Host placement.
+   */
+  resolveSessionPlacement?: (session: ApiProxySessionContext) => Promise<PresetPlacement | undefined>
   /** Native open-with-default-application; injectable for carrier tests. */
   openPath?: (path: string, signal: AbortSignal) => Promise<void>
   /** Native text-editor handoff; injectable for settings-document tests. */
@@ -1193,7 +1211,10 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
    * @returns the id to record on the header (absent without a roster) and the setup callback.
    * @throws when the roster supplies no such preset.
    */
-  async function composeAgent(presetId: string | undefined): Promise<{
+  async function composeAgent(
+    presetId: string | undefined,
+    session: ApiProxySessionContext,
+  ): Promise<{
     agentPreset?: string
     setup: (agentCtx: Context) => Promise<void>
   }> {
@@ -1207,11 +1228,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       }
     }
     const resolvedId = (await presets.resolve(presetId)).id
+    const placement = await defaults.resolveSessionPlacement?.(session)
     return {
       agentPreset: resolvedId,
       setup: async (agentCtx: Context) => {
         installSelection(agentCtx)
-        await presets.mount(agentCtx, resolvedId)
+        await presets.mount(agentCtx, resolvedId, placement)
       },
     }
   }
@@ -1236,7 +1258,11 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   const agentFor = createApiRemoteAgentResolver(ctx, {
     agentOptions,
     setup: async ({ meta, events }) =>
-      (await composeAgent(resolveSessionPreset({ header: meta, events }))).setup,
+      (await composeAgent(resolveSessionPreset({ header: meta, events }), {
+        sessionId: meta.id,
+        ...meta.cwd === undefined ? {} : { cwd: meta.cwd },
+        ...meta.parentSession === undefined ? {} : { parentSessionId: meta.parentSession },
+      })).setup,
   })
 
   /** Send one transient frame to every connected mux consumer. */
@@ -1575,7 +1601,12 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       // through the DEFAULT preset's standing layer: that is the composition
       // an unnamed session composes today, and presenters are pure display,
       // so the worst a mismatch produces is the generic card it had anyway.
-      return await presets.standingKeyFor(resolveSessionPreset(session))
+      const placement = await defaults.resolveSessionPlacement?.({
+        sessionId,
+        ...session.header.cwd === undefined ? {} : { cwd: session.header.cwd },
+        ...session.header.parentSession === undefined ? {} : { parentSessionId: session.header.parentSession },
+      })
+      return await presets.standingKeyFor(resolveSessionPreset(session), placement)
     } catch {
       // Swallows only the unknown/unusable-preset rejection from the roster:
       // a deleted or broken preset must degrade this read, never fail it.
@@ -1626,16 +1657,24 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           return (await ctx.agents.resume({
             resumeSessionId: sessionId,
             agentOptions: agentOptions(),
-            setup: (await composeAgent(storedPreset)).setup,
+            setup: (await composeAgent(storedPreset, {
+              sessionId,
+              ...inspected.meta.cwd === undefined ? {} : { cwd: inspected.meta.cwd },
+              ...inspected.meta.parentSession === undefined ? {} : { parentSessionId: inspected.meta.parentSession },
+            })).setup,
           })).agent
         }
 
         try {
-          await mkdir(cwd, { recursive: true })
+          if (defaults.prepareSessionCwd !== undefined) {
+            await defaults.prepareSessionCwd({ sessionId, cwd })
+          } else {
+            await mkdir(cwd, { recursive: true })
+          }
         } catch (error: unknown) {
           throw new Error(`failed to ensure project directory "${cwd}": ${String(error)}`, { cause: error })
         }
-        const composition = await composeAgent(presetId)
+        const composition = await composeAgent(presetId, { sessionId, cwd })
         return (await ctx.agents.create({
           sessionId,
           agentOptions: agentOptions(),
@@ -2358,7 +2397,11 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         // those tools, and composing anything else would strand the tool calls
         // it already carries. Now that no model-facing row sits in the host
         // plane, composing nothing would leave the child with no tools at all.
-        const forkComposition = await composeAgent(resolveSessionPreset(source))
+        const forkComposition = await composeAgent(resolveSessionPreset(source), {
+          sessionId: childId,
+          ...source.header.cwd === undefined ? {} : { cwd: source.header.cwd },
+          parentSessionId: source.id,
+        })
         try {
           await ctx.agents.create({
             sessionId: childId,
