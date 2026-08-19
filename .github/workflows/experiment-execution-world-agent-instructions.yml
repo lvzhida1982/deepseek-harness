@@ -35,5 +35,7 @@ jobs:
         run: pnpm exec vitest run packages/context/agent-instructions/tests/execution-world-paths.spec.ts
       - name: 运行 agent-instructions 完整测试
         run: pnpm exec vitest run packages/context/agent-instructions/tests
+      - name: 运行 E2B 文件系统完整测试
+        run: pnpm exec vitest run packages/e2b/fs-e2b/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
