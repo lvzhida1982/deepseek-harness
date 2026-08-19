@@ -32,6 +32,6 @@ jobs:
       - name: 运行 ApiProxy 完整测试
         run: pnpm exec vitest run packages/host/apiproxy/tests
       - name: 运行 Web Preset 真实组合 E2E
-        run: pnpm exec vitest run apps/cli/tests/web-agent-presets.e2e.ts
+        run: pnpm exec vitest run --config vitest.e2e.config.ts apps/cli/tests/web-agent-presets.e2e.ts
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
