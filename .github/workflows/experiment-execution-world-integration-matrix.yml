@@ -1,0 +1,65 @@
+name: Execution World Integration Matrix
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-integration-matrix
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - name: 组合已经独立 clean-verified 的通用补丁
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Execution World Integration"
+          git config user.email "integration@example.invalid"
+          branches=(
+            experiment/execution-world-shell-dialect
+            experiment/execution-world-paths
+            experiment/execution-world-shell-workdir
+            experiment/execution-world-sandbox-policy-paths
+            experiment/execution-world-tool-fs-paths
+            experiment/execution-world-fs-search-ripgrep
+            experiment/execution-world-lsp-lifecycle
+          )
+          for branch in "${branches[@]}"; do
+            git fetch origin "$branch"
+            git merge --no-edit --no-ff "origin/$branch"
+          done
+          git diff --check HEAD~1..HEAD
+      - run: pnpm install --frozen-lockfile
+      - name: 验证 Preset placement 与 Shell 方言
+        run: pnpm exec vitest run packages/preset/agent-presets/tests
+      - name: 验证 Session ExecutionWorld cwd
+        run: pnpm exec vitest run packages/core/session/tests
+      - name: 验证 Bash 与 PowerShell workdir
+        run: pnpm exec vitest run packages/shell/tool-bash/tests packages/shell/tool-pwsh/tests
+      - name: 验证 Sandbox policy 与本地 enforcing provider
+        run: pnpm exec vitest run packages/sandbox/sandbox-policy/tests packages/sandbox/sandbox-local/tests
+      - name: 验证 Agent Instructions 与 E2B 路径语义
+        run: pnpm exec vitest run packages/context/agent-instructions/tests packages/e2b/fs-e2b/tests
+      - name: 验证 tool-fs 与 fs-search
+        run: pnpm exec vitest run packages/fs/tool-fs/tests packages/fs/tool-fs-search/tests
+      - name: 验证 LSP ExecutionWorld 隔离与生命周期
+        run: pnpm exec vitest run packages/lsp/lsp/tests
+      - name: 验证组合后的 Host 构建
+        run: pnpm run build:lib:host
