@@ -128,13 +128,20 @@ describe('session cwd resolution', () => {
   const execution = (cwd?: string) => cwd === undefined
     ? {}
     : { agent: { session: { header: { cwd } } } }
+  const physicalFs = {
+    async resolve(path: string) {
+      const physical = realpathSync.native(path)
+      return { targetKey: FsTargetKey(physical), displayPath: path }
+    },
+    processPath(target: FsTarget) { return String(target.targetKey) },
+  } as Pick<FileSystem, 'resolve' | 'processPath'>
 
-  it('retains ordinary spelling but resolves the cwd before parent traversal', () => {
+  it('retains ordinary spelling but resolves the cwd in the filesystem world before parent traversal', async () => {
     const cwd = process.cwd()
     const throughParent = `${cwd}${sep}..`
-    expect(sessionCwd(execution() as never, 'file.txt')).toBeUndefined()
-    expect(sessionCwd(execution(cwd) as never, 'file.txt')).toBe(cwd)
-    expect(sessionCwd(execution(throughParent) as never, 'file.txt')).toBe(realpathSync.native(throughParent))
+    expect(await sessionCwd(physicalFs, execution() as never, 'file.txt')).toBeUndefined()
+    expect(await sessionCwd(physicalFs, execution(cwd) as never, 'file.txt')).toBe(cwd)
+    expect(await sessionCwd(physicalFs, execution(throughParent) as never, 'file.txt')).toBe(realpathSync.native(throughParent))
 
     const root = mkdtempSync(join(tmpdir(), 'dsh-tool-fs-session-cwd-'))
     const physical = join(root, 'physical')
@@ -142,8 +149,8 @@ describe('session cwd resolution', () => {
     try {
       mkdirSync(physical)
       symlinkSync(physical, link, process.platform === 'win32' ? 'junction' : 'dir')
-      expect(sessionCwd(execution(link) as never, 'child.txt')).toBe(link)
-      expect(sessionCwd(execution(link) as never, `..${sep}parent.txt`)).toBe(realpathSync.native(link))
+      expect(await sessionCwd(physicalFs, execution(link) as never, 'child.txt')).toBe(link)
+      expect(await sessionCwd(physicalFs, execution(link) as never, `..${sep}parent.txt`)).toBe(realpathSync.native(link))
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
