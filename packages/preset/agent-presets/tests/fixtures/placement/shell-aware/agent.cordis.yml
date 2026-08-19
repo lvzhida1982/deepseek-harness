@@ -1,0 +1,11 @@
+- id: bash
+  name: ../../plugins/shell-dialect-tool.js
+  disabled: !!js ctx.get('shell')?.dialect !== 'bash'
+  config:
+    name: dialect-bash
+
+- id: pwsh
+  name: ../../plugins/shell-dialect-tool.js
+  disabled: !!js ctx.get('shell')?.dialect !== 'pwsh'
+  config:
+    name: dialect-pwsh
