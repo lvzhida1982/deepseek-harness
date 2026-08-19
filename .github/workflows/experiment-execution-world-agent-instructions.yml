@@ -1,0 +1,29 @@
+name: Execution World Agent Instructions Experiment
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-agent-instructions
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-instructions-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行 Windows 执行世界指令发现红测试
+        run: pnpm exec vitest run packages/context/agent-instructions/tests/execution-world-paths.spec.ts
