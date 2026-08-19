@@ -229,8 +229,8 @@ export function applyInstructionVersionUpdates(
   if (states.size === 0) cache.delete(session)
 }
 
-function relativeScope(projectRoot: string, dir: string): string {
-  const scope = relativeDisplay(projectRoot, dir)
+function relativeScope(projectRoot: string, dir: string, fileSystem: FileSystem): string {
+  const scope = relativeDisplay(projectRoot, dir, fileSystem.path)
   return scope.length === 0 ? '.' : scope
 }
 
@@ -273,10 +273,10 @@ export async function reconcileInstructionContext(
     for (const candidate of resolved.localInstructionFileCandidates) target.add(candidateScopeKey(directory, candidate))
   }
   const addProjectScopes = (target: Set<string>, dir: string): void => {
-    addDirScopes(target, relativeScope(projectRoot, dir))
+    addDirScopes(target, relativeScope(projectRoot, dir, fileSystem))
   }
   baselineScopes.add(candidateScopeKey(USER_GLOBAL_DIRECTORY, USER_GLOBAL_FILE))
-  for (const dir of ancestorChain(projectRoot, cwd)) addProjectScopes(baselineScopes, dir)
+  for (const dir of ancestorChain(projectRoot, cwd, fileSystem.path)) addProjectScopes(baselineScopes, dir)
   if (options.includeBaselineScopes) {
     for (const scope of baselineScopes) scopes.add(scope)
   }
@@ -295,7 +295,7 @@ export async function reconcileInstructionContext(
     else addDirScopes(scopes, directory)
   }
   for (const touchedPath of options.touchedPaths) {
-    for (const dir of descendantDirsBetween(cwd, touchedPath)) addProjectScopes(scopes, dir)
+    for (const dir of descendantDirsBetween(cwd, touchedPath, fileSystem.path)) addProjectScopes(scopes, dir)
   }
 
   const versions = versionStatesFor(session, versionCache)

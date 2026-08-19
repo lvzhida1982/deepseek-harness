@@ -17,7 +17,7 @@ import { loadBaselineInstructions } from '@deepseek-ai/dsh-agent-instructions'
 class WindowsExecutionWorldFs extends FileSystem {
   readonly entries = new Map<string, { type: FsInfo['type']; content?: string }>()
 
-  get path() {
+  override get path() {
     return win32
   }
 

@@ -6,8 +6,8 @@
 
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import type { FileSystem, FsInfo, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
+import * as hostPath from 'node:path'
+import type { FileSystem, FsInfo, FsPathSemantics, FsTarget, FsVersion } from '@deepseek-ai/dsh-fs'
 import { assertNever } from '@deepseek-ai/dsh-llm'
 import { dshHomeDisplay } from '@deepseek-ai/dsh-home-paths'
 import { resolveConfig, resolveDiscoveryConfig, type ResolvedConfig } from './config.ts'
@@ -89,6 +89,20 @@ type StatFileProbe =
 
 function signalOptions(signal?: AbortSignal): { signal: AbortSignal } | undefined {
   return signal === undefined ? undefined : { signal }
+}
+
+function pathSemantics(fileSystem?: FileSystem): FsPathSemantics {
+  return fileSystem?.path ?? hostPath
+}
+
+// displayPath is logical/model-facing state. Treat both separators as syntax so
+// durable scope keys do not depend on whichever OS happens to host Harness.
+function logicalDirname(displayPath: string): string {
+  const normalized = displayPath.replaceAll('\\', '/')
+  const index = normalized.lastIndexOf('/')
+  if (index < 0) return '.'
+  if (index === 0) return '/'
+  return normalized.slice(0, index)
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -179,13 +193,14 @@ export async function findProjectRoot(
   fileSystem?: FileSystem,
   signal?: AbortSignal,
 ): Promise<string> {
-  let current = resolve(cwd)
+  const paths = pathSemantics(fileSystem)
+  let current = paths.resolve(cwd)
   for (;;) {
     for (const marker of markers) {
-      if (await existsAsMarker(join(current, marker), fileSystem, signal)) return current
+      if (await existsAsMarker(paths.join(current, marker), fileSystem, signal)) return current
     }
-    const parent = dirname(current)
-    if (parent === current) return resolve(cwd)
+    const parent = paths.dirname(current)
+    if (parent === current) return paths.resolve(cwd)
     current = parent
   }
 }
@@ -196,13 +211,17 @@ export async function findProjectRoot(
  * @param cwd - most-specific directory in the chain.
  * @returns directories ordered from broadest to most specific.
  */
-export function ancestorChain(root: string, cwd: string): string[] {
+export function ancestorChain(
+  root: string,
+  cwd: string,
+  paths: FsPathSemantics = hostPath,
+): string[] {
   const chain: string[] = []
-  let current = resolve(cwd)
-  const resolvedRoot = resolve(root)
+  let current = paths.resolve(cwd)
+  const resolvedRoot = paths.resolve(root)
   while (current !== resolvedRoot) {
     chain.push(current)
-    const parent = dirname(current)
+    const parent = paths.dirname(current)
     /* v8 ignore next -- discovery always supplies cwd or an ancestor root. */
     if (parent === current) break
     current = parent
@@ -217,13 +236,17 @@ export function ancestorChain(root: string, cwd: string): string[] {
  * @param touchedPath - absolute path or path relative to `root`.
  * @returns descendant directories from shallowest through the touched file's parent.
  */
-export function descendantDirsBetween(root: string, touchedPath: string): string[] {
-  const resolvedRoot = resolve(root)
-  const targetPath = isAbsolute(touchedPath) ? resolve(touchedPath) : resolve(resolvedRoot, touchedPath)
-  const targetDir = dirname(targetPath)
-  const rel = relative(resolvedRoot, targetDir)
-  if (rel.length === 0 || rel.startsWith('..') || isAbsolute(rel)) return []
-  return ancestorChain(resolvedRoot, targetDir).slice(1)
+export function descendantDirsBetween(
+  root: string,
+  touchedPath: string,
+  paths: FsPathSemantics = hostPath,
+): string[] {
+  const resolvedRoot = paths.resolve(root)
+  const targetPath = paths.isAbsolute(touchedPath) ? paths.resolve(touchedPath) : paths.resolve(resolvedRoot, touchedPath)
+  const targetDir = paths.dirname(targetPath)
+  const rel = paths.relative(resolvedRoot, targetDir)
+  if (rel.length === 0 || rel.startsWith('..') || paths.isAbsolute(rel)) return []
+  return ancestorChain(resolvedRoot, targetDir, paths).slice(1)
 }
 
 /**
@@ -232,8 +255,12 @@ export function descendantDirsBetween(root: string, touchedPath: string): string
  * @param path - absolute path to display.
  * @returns the root-relative path.
  */
-export function relativeDisplay(root: string, path: string): string {
-  return relative(root, path)
+export function relativeDisplay(
+  root: string,
+  path: string,
+  paths: FsPathSemantics = hostPath,
+): string {
+  return paths.relative(root, path)
 }
 
 async function allExistingInstructionFiles(
@@ -244,12 +271,13 @@ async function allExistingInstructionFiles(
   signal?: AbortSignal,
 ): Promise<DiscoveredInstructionFile[]> {
   const found: DiscoveredInstructionFile[] = []
+  const paths = pathSemantics(fileSystem)
   for (const candidate of instructionFileCandidates) {
-    const path = join(dir, candidate)
+    const path = paths.join(dir, candidate)
     const probe = await statFile(path, fileSystem, signal)
     switch (probe.kind) {
       case 'present':
-        found.push({ absolutePath: path, displayPath: relativeDisplay(root, path), ...probe.info })
+        found.push({ absolutePath: path, displayPath: relativeDisplay(root, path, paths), ...probe.info })
         continue
       // A missing candidate is skipped; a transient provider failure skips only
       // that candidate so the remaining independent candidates still load.
@@ -269,6 +297,7 @@ async function discoverInstructionFiles(
   fileSystem?: FileSystem,
 ): Promise<DiscoveredInstructionFile[]> {
   const config = resolveDiscoveryConfig(options)
+  const paths = pathSemantics(fileSystem)
   const files: DiscoveredInstructionFile[] = []
   const seen = new Set<string>()
   const addFile = (file: DiscoveredInstructionFile): void => {
@@ -277,7 +306,7 @@ async function discoverInstructionFiles(
     files.push(file)
   }
 
-  const userGlobal = join(config.dshHome, USER_GLOBAL_FILE)
+  const userGlobal = paths.join(config.dshHome, USER_GLOBAL_FILE)
   const userGlobalProbe = await statFile(userGlobal, fileSystem, options.signal)
   switch (userGlobalProbe.kind) {
     case 'present':
@@ -295,10 +324,10 @@ async function discoverInstructionFiles(
       assertNever(userGlobalProbe, 'StatFileProbe')
   }
 
-  const cwd = resolve(options.cwd)
+  const cwd = paths.resolve(options.cwd)
   const projectRoot = options.projectRoot
     ?? await findProjectRoot(cwd, config.projectRootMarkers, fileSystem, options.signal)
-  for (const dir of ancestorChain(projectRoot, cwd)) {
+  for (const dir of ancestorChain(projectRoot, cwd, paths)) {
     for (const candidates of [config.instructionFileCandidates, config.localInstructionFileCandidates]) {
       for (const file of await allExistingInstructionFiles(dir, projectRoot, candidates, fileSystem, options.signal)) {
         addFile(file)
@@ -369,7 +398,7 @@ export function dedupInstructionFilesByDirectory(files: LoadedInstructionFile[])
   const keptDigestsByDir = new Map<string, Set<string>>()
   const kept: LoadedInstructionFile[] = []
   for (const file of files) {
-    const dir = dirname(file.displayPath)
+    const dir = logicalDirname(file.displayPath)
     let digests = keptDigestsByDir.get(dir)
     if (digests === undefined) {
       digests = new Set()
@@ -465,10 +494,11 @@ export async function probeScopeInstruction(
   signal?: AbortSignal,
 ): Promise<ScopeInstructionProbe> {
   const { directory, candidateName } = decodeScopeKey(scope)
+  const paths = fileSystem.path
   const dir = directory === USER_GLOBAL_DIRECTORY
     ? resolved.dshHome
-    : directory === '.' ? projectRoot : join(projectRoot, directory)
-  const absolutePath = join(dir, candidateName)
+    : directory === '.' ? projectRoot : paths.join(projectRoot, directory)
+  const absolutePath = paths.join(dir, candidateName)
   // resolve() follows a final-component symlink; stat then classifies the target.
   // A non-file target (missing, or a link to a directory) is a confirmed absence;
   // only a provider exception is reported as unavailable.
@@ -484,7 +514,7 @@ export async function probeScopeInstruction(
   if (info?.type !== 'file') return { kind: 'absent' }
   const file: ProbedInstructionFile = {
     absolutePath,
-    displayPath: directory === USER_GLOBAL_DIRECTORY ? userGlobalDisplayPath(resolved.dshHome) : relativeDisplay(projectRoot, absolutePath),
+    displayPath: directory === USER_GLOBAL_DIRECTORY ? userGlobalDisplayPath(resolved.dshHome) : relativeDisplay(projectRoot, absolutePath, paths),
     target,
     version: info.version,
     ...info.size === undefined ? {} : { size: info.size },
