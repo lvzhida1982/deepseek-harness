@@ -1,6 +1,6 @@
 name: Execution World Sandbox Policy Paths Experiment
 
-# 触发一次 push 验证，让已通过测试的源码正式写回实验分支。
+# 触发 push：把已通过生成态测试的源码写回实验分支，并切换到只读清洁验证。
 on:
   push:
     branches:
