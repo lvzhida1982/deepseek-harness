@@ -1,0 +1,33 @@
+name: Execution World FS Search Ripgrep Experiment
+
+on:
+  push:
+    branches:
+      - experiment/execution-world-fs-search-ripgrep
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fs-search-ripgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行 execution-world ripgrep 聚焦测试
+        run: pnpm exec vitest run packages/fs/tool-fs-search/tests/execution-world-ripgrep.spec.ts
+      - name: 运行 tool-fs-search 完整测试
+        run: pnpm exec vitest run packages/fs/tool-fs-search/tests
+      - name: 运行 Host 类型与构建检查
+        run: pnpm run build:lib:host
