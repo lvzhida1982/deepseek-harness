@@ -216,6 +216,7 @@ export async function runRipgrep(
   rawOutputMaxBytes: number,
   graceMs: number,
   stderrMaxBytes: number,
+  ripgrepExecutable?: string,
 ): Promise<RipgrepRun> {
   if (exec.signal.aborted) {
     throw new SearchError(`${toolName} was aborted before completion (tool timeout or caller cancellation)`, 'SEARCH_ABORTED')
@@ -224,8 +225,11 @@ export async function runRipgrep(
   const workdir = cwd ?? process.cwd()
   let handle: SubprocessHandle
   try {
+    const executable = ripgrepExecutable === undefined
+      ? await resolveRgPath()
+      : await ctx.subprocess.resolveExecutable(ripgrepExecutable, undefined, exec.signal)
     handle = ctx.subprocess.spawn({
-      argv: [await resolveRgPath(), '--no-config', ...argv],
+      argv: [executable, '--no-config', ...argv],
       cwd: workdir,
       stdio: {
         stdin: 'ignore',

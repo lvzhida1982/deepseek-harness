@@ -92,6 +92,11 @@ export interface Config {
    * `@deepseek-ai/dsh-tool-call-timeout-policy` through `exec.signal`.
    */
   timeoutMs?: number
+  /**
+   * Optional ripgrep command/path resolved inside the mounted subprocess
+   * execution world. Omit to preserve the packaged Host binary default.
+   */
+  ripgrepExecutable?: string
 }
 
 export const Config: z<Config> = z.object({
@@ -104,10 +109,11 @@ export const Config: z<Config> = z.object({
   graceMs: z.number().default(SEARCH_GRACE_MS),
   stderrMaxBytes: z.number().default(SEARCH_STDERR_MAX_BYTES),
   timeoutMs: z.number().default(SEARCH_TIMEOUT_MS),
+  ripgrepExecutable: z.string(),
 })
 
 /** The shape after schemastery applied the defaults. */
-type ResolvedConfig = Required<Config>
+type ResolvedConfig = Required<Omit<Config, 'ripgrepExecutable'>> & Pick<Config, 'ripgrepExecutable'>
 
 /** Every search cap counts items/bytes/milliseconds — a positive integer, or retention and timeout arithmetic misbehaves silently. */
 function assertPositiveInteger(name: string, value: number): void {
@@ -139,6 +145,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   }
   assertPositiveInteger('stderrMaxBytes', resolved.stderrMaxBytes)
   assertPositiveInteger('timeoutMs', resolved.timeoutMs)
+  if (resolved.ripgrepExecutable !== undefined && resolved.ripgrepExecutable.trim().length === 0) {
+    throw new Error('tool-fs-search: ripgrepExecutable must be non-blank when provided')
+  }
   applyGlobTool(ctx, {
     sampleOverCapGlobResults: resolved.sampleOverCapGlobResults,
     maxResults: resolved.globMaxResults,
@@ -147,6 +156,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     graceMs: resolved.graceMs,
     stderrMaxBytes: resolved.stderrMaxBytes,
     timeoutMs: resolved.timeoutMs,
+    ...resolved.ripgrepExecutable === undefined ? {} : { ripgrepExecutable: resolved.ripgrepExecutable },
   })
   applyGrepTool(ctx, {
     maxMatches: resolved.grepMaxMatches,
@@ -156,5 +166,6 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     graceMs: resolved.graceMs,
     stderrMaxBytes: resolved.stderrMaxBytes,
     timeoutMs: resolved.timeoutMs,
+    ...resolved.ripgrepExecutable === undefined ? {} : { ripgrepExecutable: resolved.ripgrepExecutable },
   })
 }
