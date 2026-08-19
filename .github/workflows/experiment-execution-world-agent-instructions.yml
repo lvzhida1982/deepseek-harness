@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   agent-instructions-paths:
@@ -39,3 +39,23 @@ jobs:
         run: pnpm exec vitest run packages/e2b/fs-e2b/tests
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
+      - name: 提交验证后的执行世界路径语义实现
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            packages/fs/fs/src/index.ts \
+            packages/e2b/fs-e2b/src/index.ts \
+            packages/context/agent-instructions/src/files.ts \
+            packages/context/agent-instructions/src/config.ts \
+            packages/context/agent-instructions/src/index.ts \
+            packages/context/agent-instructions/src/state.ts \
+            packages/context/agent-instructions/src/render.ts \
+            packages/context/agent-instructions/tests/execution-world-paths.spec.ts
+          if git diff --cached --quiet; then
+            echo '没有需要提交的生成源码'
+            exit 0
+          fi
+          git commit -m '验证：提交通过完整测试的执行世界路径语义实现'
+          git push origin HEAD:experiment/execution-world-agent-instructions
