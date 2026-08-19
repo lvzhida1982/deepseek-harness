@@ -30,8 +30,8 @@ import { effectiveSandboxMode } from './session-mode.ts'
 export { SANDBOX_MODES, effectiveSandboxMode, setSandboxMode } from './session-mode.ts'
 
 /** Resolve filesystem identity before lexical normalization can erase symlink-sensitive components. */
-function resolveWorkspaceRoot(path: string): string {
-  return resolvePath(canonicalPath(path))
+function resolveWorkspaceRoot(path: string, canonicalize: boolean): string {
+  return canonicalize ? resolvePath(canonicalPath(path)) : path
 }
 
 /** Render the policy without claiming which capabilities are mounted. */
@@ -72,6 +72,13 @@ export interface Config {
    * `process.cwd()`). Normal agent calls use their session cwd instead.
    */
   workspaceRoot?: string
+  /**
+   * Canonicalize workspace roots through this Harness host before publishing
+   * policy. Disable when the path belongs to another execution world; its
+   * enforcing providers own physical identity there. Defaults to true for
+   * backward-compatible local deployments.
+   */
+  canonicalizeWorkspaceRoot?: boolean
 }
 
 /** Inputs that select the sandbox policy for one capability call. */
@@ -95,19 +102,25 @@ export class SandboxPolicyService extends Service {
     // No schema default: process.cwd() is resolved in the constructor so the
     // stored root is always absolute regardless of how it was supplied.
     workspaceRoot: z.string(),
+    canonicalizeWorkspaceRoot: z.boolean().default(true),
   })
 
   /** The deployment default mode — the fallback beneath a session override. */
   readonly defaultMode: SandboxMode
-  /** The absolute `workspace-write` fallback root for calls without a session cwd. */
+  /** The `workspace-write` fallback root in the execution world's path namespace. */
   readonly workspaceRoot: string
+  private readonly canonicalizeWorkspaceRoot: boolean
   constructor(ctx: Context, config: Config) {
     super(ctx, 'sandboxPolicy')
     // schemastery (static Config) already filled `mode`; the cast records that
     // runtime fact. `workspaceRoot` has NO schema default, so its fallback to
     // the process cwd is real branching, resolved absolute either way.
     this.defaultMode = config.mode as SandboxMode
-    this.workspaceRoot = resolveWorkspaceRoot(config.workspaceRoot ?? process.cwd())
+    this.canonicalizeWorkspaceRoot = config.canonicalizeWorkspaceRoot as boolean
+    this.workspaceRoot = resolveWorkspaceRoot(
+      config.workspaceRoot ?? process.cwd(),
+      this.canonicalizeWorkspaceRoot,
+    )
 
     ctx.inject(['systemPrompt'], (scope: Context) => {
       scope.systemPrompt.context({
@@ -136,7 +149,10 @@ export class SandboxPolicyService extends Service {
     const { session } = request
     return {
       mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
-      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
+      workspaceRoot: resolveWorkspaceRoot(
+        session?.header.cwd ?? this.workspaceRoot,
+        this.canonicalizeWorkspaceRoot,
+      ),
       ...session === undefined ? {} : { sessionId: session.id },
     }
   }

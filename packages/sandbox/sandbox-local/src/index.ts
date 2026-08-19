@@ -23,7 +23,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   LAUNCHER_BIN,
@@ -34,7 +34,7 @@ import {
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { assertNever } from '@deepseek-ai/dsh-llm'
-import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
+import { canonicalPath, SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
@@ -314,16 +314,24 @@ export class LocalSandboxProvider extends SandboxProvider {
    *   `SANDBOX_UNAVAILABLE` error when the platform has no usable runner.
    */
   confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv {
+    // This provider owns the local execution world's physical path identity.
+    // Never rely on an upstream policy service having canonicalized a path on
+    // the same machine: doing it here keeps the safety boundary with the
+    // component that actually constructs the kernel-enforced runner argv.
+    const localPolicy: SandboxPolicy = {
+      ...policy,
+      workspaceRoot: resolvePath(canonicalPath(policy.workspaceRoot)),
+    }
     if (this.runnerCommand !== undefined) {
       return {
-        argv: [...this.runnerCommand, ...bwrapProfileArgs(policy), '--', ...argv],
+        argv: [...this.runnerCommand, ...bwrapProfileArgs(localPolicy), '--', ...argv],
         enforcement: 'full',
         denialSignatures: DENIAL_SIGNATURES.runnerCommand,
         runnerFailureRules: [{ fatalSignatures: this.configuredRunnerFailureSignatures }],
       }
     }
-    const selected = this.selectRunner(policy.mode)
-    const runnerArgv = this.runnerArgv(selected.runner, policy)
+    const selected = this.selectRunner(localPolicy.mode)
+    const runnerArgv = this.runnerArgv(selected.runner, localPolicy)
     return {
       argv: [...runnerArgv, '--', ...argv],
       enforcement: selected.enforcement,
