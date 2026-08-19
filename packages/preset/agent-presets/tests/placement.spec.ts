@@ -39,11 +39,15 @@ interface ExecutionWorld {
   readonly placement: PresetPlacement
 }
 
-function executionWorld(ctx: Context, label: string): ExecutionWorld {
-  const isolated = ctx.isolate('worldMarker')
+function executionWorld(ctx: Context, label: string, shellDialect?: 'bash' | 'pwsh'): ExecutionWorld {
+  let isolated = ctx.isolate('worldMarker')
+  if (shellDialect !== undefined) isolated = isolated.isolate('shell')
   const key: ScopeKey = { executionWorld: label }
   const scope = createScope(isolated, key)
   scope.ctx.effect(() => scope.ctx.reflect.provide('worldMarker', { label }))
+  if (shellDialect !== undefined) {
+    scope.ctx.effect(() => scope.ctx.reflect.provide('shell', { dialect: shellDialect }))
+  }
   return { key, scope, placement: { ctx: scope.ctx, parent: key } }
 }
 
@@ -128,5 +132,19 @@ describe('agent preset generalized placement', () => {
     await expect(ctx.agentPresets.recompose(agent.ctx, 'world-aware-alt', worldB.placement))
       .rejects.toThrow('different preset placement')
     expect(toolNames(ctx, agent)).toEqual(['world-A'])
+  })
+
+  it('evaluates disabled expressions against the placement-scoped shell dialect', async () => {
+    const ctx = await harness()
+    const bashWorld = executionWorld(ctx, 'bash-world', 'bash')
+    const pwshWorld = executionWorld(ctx, 'pwsh-world', 'pwsh')
+    const bashAgent = agentIn(bashWorld, 'bash-agent')
+    const pwshAgent = agentIn(pwshWorld, 'pwsh-agent')
+
+    await ctx.agentPresets.mount(bashAgent.ctx, 'shell-aware', bashWorld.placement)
+    await ctx.agentPresets.mount(pwshAgent.ctx, 'shell-aware', pwshWorld.placement)
+
+    expect(toolNames(ctx, bashAgent)).toEqual(['dialect-bash'])
+    expect(toolNames(ctx, pwshAgent)).toEqual(['dialect-pwsh'])
   })
 })
