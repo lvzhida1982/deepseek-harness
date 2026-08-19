@@ -31,7 +31,23 @@ jobs:
         run: pnpm exec vitest run packages/host/apiproxy/tests/api-proxy-execution-world-cwd.spec.ts
       - name: 运行 ApiProxy 完整测试
         run: pnpm exec vitest run packages/host/apiproxy/tests
-      - name: 运行 Web Preset 真实组合 E2E
-        run: pnpm exec vitest run --config vitest.e2e.config.ts apps/cli/tests/web-agent-presets.e2e.ts
       - name: 运行 Host 类型与构建检查
         run: pnpm run build:lib:host
+
+  web-preset-e2e-control:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 未修改的实验基线
+        uses: actions/checkout@v6
+        with:
+          ref: experiment/execution-world-paths
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 运行未修改基线的 Web Preset 真实组合 E2E
+        run: pnpm exec vitest run --config vitest.e2e.config.ts apps/cli/tests/web-agent-presets.e2e.ts
