@@ -4,8 +4,9 @@
  * @module @deepseek-ai/dsh-agent-instructions/config
  */
 
-import { relative } from 'node:path'
+import * as hostPath from 'node:path'
 import z from '@deepseek-ai/schemastery'
+import type { FsPathSemantics } from '@deepseek-ai/dsh-fs'
 import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 
 const DEFAULT_PROJECT_ROOT_MARKERS = ['.git'] as const
@@ -70,9 +71,10 @@ export function workspaceBaselineIdentity(
   config: ResolvedConfig,
   cwd: string,
   projectRoot: string,
+  paths: FsPathSemantics = hostPath,
 ): string {
   return JSON.stringify({
-    projectRoot: relative(cwd, projectRoot),
+    projectRoot: paths.relative(cwd, projectRoot),
     projectRootMarkers: config.projectRootMarkers,
     maxBytes: config.maxBytes,
     maxSourceBytes: config.maxSourceBytes,

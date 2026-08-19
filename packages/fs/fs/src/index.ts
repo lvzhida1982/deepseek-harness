@@ -8,6 +8,7 @@
  * @module @deepseek-ai/dsh-fs
  */
 
+import * as hostPath from 'node:path'
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandbox'
 import type {
@@ -77,6 +78,17 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
+/** Pure lexical path operations belonging to one filesystem execution world. */
+export interface FsPathSemantics {
+  readonly sep: string
+  resolve(...paths: string[]): string
+  join(...paths: string[]): string
+  dirname(path: string): string
+  basename(path: string): string
+  relative(from: string, to: string): string
+  isAbsolute(path: string): boolean
+}
+
 /**
  * Abstract filesystem provider. Targets must preserve identity across aliases;
  * reads expose regular UTF-8 text or typed errors, listings are stable and
@@ -86,6 +98,15 @@ declare module '@deepseek-ai/cordis' {
 export abstract class FileSystem extends Service {
   constructor(ctx: Context) {
     super(ctx, 'fs')
+  }
+
+  /**
+   * Pure lexical path grammar for this provider's execution world. Local
+   * providers inherit the Harness host grammar; remote/cross-platform
+   * providers override it without exposing Device or transport concepts.
+   */
+  get path(): FsPathSemantics {
+    return hostPath
   }
 
   /**

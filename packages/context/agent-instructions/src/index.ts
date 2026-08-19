@@ -123,7 +123,7 @@ export function apply(ctx: Context, config: Config): void {
     /* v8 ignore next -- normal agents carry an absolute session cwd. */
     const cwd = agent.session.header.cwd ?? process.cwd()
     const projectRoot = await findProjectRoot(cwd, resolved.projectRootMarkers, fileSystem, signal)
-    const identity = workspaceBaselineIdentity(resolved, cwd, projectRoot)
+    const identity = workspaceBaselineIdentity(resolved, cwd, projectRoot, fileSystem.path)
     const visibleBaseline = visibleBaselineSource(agent, authorityMessages)
     const baselinePresent = visibleBaseline !== undefined
     const keepVisibleBaseline = visibleBaseline?.baselineIdentity === identity

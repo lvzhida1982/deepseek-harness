@@ -4,7 +4,6 @@
  * @module @deepseek-ai/dsh-agent-instructions/render
  */
 
-import { basename, dirname } from 'node:path'
 import type { InstructionFile, LoadedInstructionFile } from './files.ts'
 
 const SYSTEM_REMINDER_OPEN = '<system-reminder>'
@@ -86,6 +85,24 @@ function sectionText(file: LoadedInstructionFile): string {
   return `Instructions from: ${file.displayPath}\n\n${file.content}`
 }
 
+function normalizeLogicalPath(path: string): string {
+  return path.replaceAll('\\', '/')
+}
+
+function logicalDirname(path: string): string {
+  const normalized = normalizeLogicalPath(path)
+  const index = normalized.lastIndexOf('/')
+  if (index < 0) return '.'
+  if (index === 0) return '/'
+  return normalized.slice(0, index)
+}
+
+function logicalBasename(path: string): string {
+  const normalized = normalizeLogicalPath(path)
+  const index = normalized.lastIndexOf('/')
+  return index < 0 ? normalized : normalized.slice(index + 1)
+}
+
 /** Directory component that identifies the single user-global instruction scope. */
 export const USER_GLOBAL_DIRECTORY = 'user-global'
 
@@ -104,7 +121,7 @@ export const USER_GLOBAL_FILE = 'AGENTS.md'
  */
 export function scopeForDisplayPath(displayPath: string): string {
   if (displayPath === '~/.dsh/AGENTS.md' || displayPath === '$DSH_HOME/AGENTS.md') return USER_GLOBAL_DIRECTORY
-  return dirname(displayPath)
+  return logicalDirname(displayPath)
 }
 
 const SCOPE_SEPARATOR = '\u0000'
@@ -130,7 +147,7 @@ export function candidateScopeKey(directory: string, candidateName: string): str
  * @returns the scope key pairing the file's directory with its name.
  */
 export function instructionScopeKey(displayPath: string): string {
-  return candidateScopeKey(scopeForDisplayPath(displayPath), basename(displayPath))
+  return candidateScopeKey(scopeForDisplayPath(displayPath), logicalBasename(displayPath))
 }
 
 /**

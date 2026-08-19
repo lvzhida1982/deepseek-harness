@@ -173,6 +173,11 @@ export class E2BFileSystem extends FileSystem {
 
   private readonly locks = new Map<string, Promise<unknown>>()
 
+  /** E2B sandboxes are POSIX regardless of the Harness host platform. */
+  override get path() {
+    return posix
+  }
+
   override async resolve(path: string, opts?: { cwd?: string; signal?: AbortSignal }): Promise<FsTarget> {
     assertNotAborted(opts?.signal, 'resolve')
     if (path.trim().length === 0) throw new FsError('file_path must be a non-empty string', 'FS_NOT_FOUND')
