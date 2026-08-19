@@ -1,4 +1,5 @@
 import { win32 } from 'node:path'
+import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it } from 'vitest'
 import { FileSystem, FsTargetKey, FsVersion } from '@deepseek-ai/dsh-fs'
 import type {
@@ -88,7 +89,9 @@ class WindowsExecutionWorldFs extends FileSystem {
 
 describe('agent instructions execution-world paths', () => {
   it('discovers root-to-cwd instructions with the filesystem provider path grammar', async () => {
-    const fs = new WindowsExecutionWorldFs({} as never)
+    const ctx = new Context()
+    await ctx.plugin(WindowsExecutionWorldFs)
+    const fs = ctx.fs as WindowsExecutionWorldFs
     fs.entries.set(String.raw`d:\project\.git`, { type: 'directory' })
     fs.entries.set(String.raw`d:\project\agents.md`, { type: 'file', content: 'root rules' })
     fs.entries.set(String.raw`d:\project\packages\app\agents.md`, { type: 'file', content: 'app rules' })
@@ -103,5 +106,7 @@ describe('agent instructions execution-world paths', () => {
     const text = JSON.stringify(rendered)
     expect(text).toContain('root rules')
     expect(text).toContain('app rules')
+
+    await ctx.dispose()
   })
 })
