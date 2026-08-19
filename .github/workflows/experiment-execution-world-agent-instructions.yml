@@ -29,6 +29,8 @@ jobs:
         run: node packages/context/agent-instructions/tests/apply-execution-world-path-semantics.mjs
       - name: 补齐 E2B 固定 POSIX 路径语义
         run: node packages/context/agent-instructions/tests/finalize-execution-world-path-semantics.mjs
+      - name: 让指令插件完整调用链使用执行世界路径语义
+        run: node packages/context/agent-instructions/tests/apply-agent-instructions-world-path-callers.mjs
       - name: 运行 Windows 执行世界指令发现测试
         run: pnpm exec vitest run packages/context/agent-instructions/tests/execution-world-paths.spec.ts
       - name: 运行 agent-instructions 完整测试
